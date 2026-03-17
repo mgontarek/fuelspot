@@ -5,6 +5,10 @@ export interface RouteMapHandle {
   showRoute(route: ParsedRoute): void;
   clear(): void;
   destroy(): void;
+  showRiderPosition(position: { lat: number; lng: number }): void;
+  clearRiderPosition(): void;
+  showOffRouteWarning(): void;
+  hideOffRouteWarning(): void;
 }
 
 export interface LeafletFactory {
@@ -15,6 +19,10 @@ export interface LeafletFactory {
     options?: L.PolylineOptions,
   ): L.Polyline;
   marker(latlng: L.LatLngExpression, options?: L.MarkerOptions): L.Marker;
+  circleMarker(
+    latlng: L.LatLngExpression,
+    options?: L.CircleMarkerOptions,
+  ): L.CircleMarker;
 }
 
 const DEFAULT_CENTER: L.LatLngExpression = [0, 0];
@@ -47,6 +55,13 @@ export function initRouteMap(
 
   let currentPolyline: L.Polyline | null = null;
   let currentMarkers: L.Marker[] = [];
+  let riderMarker: L.CircleMarker | null = null;
+
+  const offRouteBanner = document.createElement('div');
+  offRouteBanner.className = 'off-route-warning';
+  offRouteBanner.textContent = 'You are off route';
+  offRouteBanner.hidden = true;
+  container.appendChild(offRouteBanner);
 
   function removeLayers(): void {
     if (currentPolyline) {
@@ -112,10 +127,50 @@ export function initRouteMap(
     map.remove();
   }
 
+  function showRiderPosition(position: { lat: number; lng: number }): void {
+    const latlng: L.LatLngExpression = [position.lat, position.lng];
+    if (riderMarker) {
+      riderMarker.setLatLng(latlng);
+    } else {
+      riderMarker = leaflet
+        .circleMarker(latlng, {
+          radius: 8,
+          color: '#2563eb',
+          fillColor: '#3b82f6',
+          fillOpacity: 1,
+          weight: 2,
+        })
+        .addTo(map);
+    }
+  }
+
+  function clearRiderPosition(): void {
+    if (riderMarker) {
+      riderMarker.remove();
+      riderMarker = null;
+    }
+  }
+
+  function showOffRouteWarning(): void {
+    offRouteBanner.hidden = false;
+  }
+
+  function hideOffRouteWarning(): void {
+    offRouteBanner.hidden = true;
+  }
+
   // Initial state: placeholder visible, map hidden
   mapDiv.hidden = true;
 
-  return { showRoute, clear, destroy };
+  return {
+    showRoute,
+    clear,
+    destroy,
+    showRiderPosition,
+    clearRiderPosition,
+    showOffRouteWarning,
+    hideOffRouteWarning,
+  };
 }
 
 let defaultFactory: LeafletFactory | undefined;

@@ -1,10 +1,12 @@
 import { parseGPX } from './gpx-parser';
 import type { ParsedRoute } from './gpx-parser';
 import { initRouteMap } from './route-map';
+import { initGpsTracker } from './gps-tracker';
+import type { GeolocationProvider, GpsTrackerHandle } from './gps-tracker';
 
 const STORAGE_KEY = 'fuelspot-gpx';
 
-export function initUpload(): void {
+export function initUpload(geo?: GeolocationProvider): void {
   const fileInput = document.getElementById('gpx-input') as HTMLInputElement;
   const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
   const statsSection = document.getElementById('route-stats') as HTMLElement;
@@ -16,6 +18,27 @@ export function initUpload(): void {
 
   const mapHandle = initRouteMap(mapContainer);
 
+  let gpsTracker: GpsTrackerHandle | null = null;
+
+  const geoProvider = geo ?? (typeof navigator !== 'undefined' && navigator.geolocation
+    ? navigator.geolocation
+    : null);
+
+  if (geoProvider) {
+    gpsTracker = initGpsTracker(geoProvider, (state) => {
+      if (state.position) {
+        mapHandle.showRiderPosition(state.position);
+      }
+      if (state.match) {
+        if (state.match.isOnRoute) {
+          mapHandle.hideOffRouteWarning();
+        } else {
+          mapHandle.showOffRouteWarning();
+        }
+      }
+    });
+  }
+
   function showRoute(route: ParsedRoute): void {
     routeName.textContent = route.name ?? 'Unnamed route';
     pointCount.textContent = `${route.points.length} points`;
@@ -24,6 +47,7 @@ export function initUpload(): void {
     errorSection.hidden = true;
     clearBtn.hidden = false;
     mapHandle.showRoute(route);
+    gpsTracker?.start(route.points);
   }
 
   function showError(message: string): void {
@@ -38,6 +62,9 @@ export function initUpload(): void {
     clearBtn.hidden = true;
     fileInput.value = '';
     mapHandle.clear();
+    gpsTracker?.stop();
+    mapHandle.clearRiderPosition();
+    mapHandle.hideOffRouteWarning();
   }
 
   // Load from localStorage on init

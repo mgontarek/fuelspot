@@ -19,6 +19,7 @@ setDefaultFactory({
   tileLayer: (url, options) => L.tileLayer(url, options),
   polyline: (latlngs, options) => L.polyline(latlngs, options),
   marker: (latlng, options) => L.marker(latlng, options),
+  circleMarker: (latlng, options) => L.circleMarker(latlng, options),
 });
 
 initUpload();
