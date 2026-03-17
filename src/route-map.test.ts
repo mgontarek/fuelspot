@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { LeafletFactory, RouteMapHandle } from './route-map';
 import { initRouteMap } from './route-map';
 import type { ParsedRoute } from './gpx-parser';
+import type { POI } from './poi-fetcher';
 
 function makeRoute(
   points: Array<{ lat: number; lng: number }>,
@@ -29,7 +30,7 @@ function createMockFactory() {
 
   const polylines: Array<{ addTo: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; getBounds: ReturnType<typeof vi.fn> }> = [];
   const markers: Array<{ addTo: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }> = [];
-  const circleMarkers: Array<{ addTo: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; setLatLng: ReturnType<typeof vi.fn> }> = [];
+  const circleMarkers: Array<{ addTo: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; setLatLng: ReturnType<typeof vi.fn>; bindPopup: ReturnType<typeof vi.fn> }> = [];
 
   const factory: LeafletFactory = {
     map: vi.fn(() => mockMap) as unknown as LeafletFactory['map'],
@@ -55,6 +56,7 @@ function createMockFactory() {
         addTo: vi.fn().mockReturnThis(),
         remove: vi.fn(),
         setLatLng: vi.fn().mockReturnThis(),
+        bindPopup: vi.fn().mockReturnThis(),
       };
       circleMarkers.push(cm);
       return cm;
@@ -312,5 +314,70 @@ describe('route-map', () => {
 
     const banner = container.querySelector('.off-route-warning') as HTMLElement;
     expect(banner.hidden).toBe(true);
+  });
+
+  // Slice 8: showPOIs adds circle markers with category-specific colors
+  it('showPOIs adds circle markers for each POI with correct colors', () => {
+    const pois: POI[] = [
+      { id: 1, name: 'Shell', type: 'fuel', lat: 50.1, lng: 20.1, openingHours: null, acceptsCards: true },
+      { id: 2, name: 'Cafe X', type: 'cafe', lat: 50.2, lng: 20.2, openingHours: null, acceptsCards: null },
+    ];
+
+    handle.showPOIs(pois);
+
+    expect(mocks.factory.circleMarker).toHaveBeenCalledTimes(2);
+    const calls = vi.mocked(mocks.factory.circleMarker).mock.calls;
+    expect(calls[0][0]).toEqual([50.1, 20.1]);
+    expect(calls[0][1]).toMatchObject({ color: '#ef4444' }); // fuel = red
+    expect(calls[1][0]).toEqual([50.2, 20.2]);
+    expect(calls[1][1]).toMatchObject({ color: '#6366f1' }); // cafe = indigo
+  });
+
+  // Slice 9: showPOIs binds popups with name, type, and card info
+  it('showPOIs binds popups with name, type, and card info', () => {
+    const pois: POI[] = [
+      { id: 1, name: 'Shell', type: 'fuel', lat: 50.1, lng: 20.1, openingHours: 'Mo-Su 06:00-22:00', acceptsCards: true },
+    ];
+
+    handle.showPOIs(pois);
+
+    const cm = mocks.circleMarkers[0];
+    expect(cm.bindPopup).toHaveBeenCalledOnce();
+    const popupHtml = cm.bindPopup.mock.calls[0][0] as string;
+    expect(popupHtml).toContain('Shell');
+    expect(popupHtml).toContain('fuel');
+    expect(popupHtml).toContain('Cards: Yes');
+  });
+
+  // Slice 10: clearPOIs removes all POI markers
+  it('clearPOIs removes all POI markers', () => {
+    const pois: POI[] = [
+      { id: 1, name: 'A', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+      { id: 2, name: 'B', type: 'cafe', lat: 51, lng: 21, openingHours: null, acceptsCards: null },
+    ];
+
+    handle.showPOIs(pois);
+    handle.clearPOIs();
+
+    for (const cm of mocks.circleMarkers) {
+      expect(cm.remove).toHaveBeenCalledOnce();
+    }
+  });
+
+  // Slice 11: calling showPOIs again replaces previous markers
+  it('showPOIs replaces previous POI markers', () => {
+    const pois1: POI[] = [
+      { id: 1, name: 'A', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+    ];
+    const pois2: POI[] = [
+      { id: 2, name: 'B', type: 'cafe', lat: 51, lng: 21, openingHours: null, acceptsCards: null },
+    ];
+
+    handle.showPOIs(pois1);
+    const firstMarker = mocks.circleMarkers[0];
+    expect(firstMarker.remove).not.toHaveBeenCalled();
+
+    handle.showPOIs(pois2);
+    expect(firstMarker.remove).toHaveBeenCalledOnce();
   });
 });

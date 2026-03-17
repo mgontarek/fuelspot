@@ -16,6 +16,8 @@ function setupDOM(): void {
       </section>
       <p id="error-display" hidden></p>
       <button id="clear-btn" type="button" hidden>Clear route</button>
+      <button id="refresh-btn" type="button" hidden>Refresh stops</button>
+      <p id="loading-indicator" hidden>Loading stops…</p>
       <div id="map-container"></div>
     </div>
   `;
@@ -50,6 +52,8 @@ vi.mock('./route-map', () => {
   const clearRiderPosition = vi.fn();
   const showOffRouteWarning = vi.fn();
   const hideOffRouteWarning = vi.fn();
+  const showPOIs = vi.fn();
+  const clearPOIs = vi.fn();
   return {
     initRouteMap: vi.fn(() => ({
       showRoute,
@@ -59,8 +63,20 @@ vi.mock('./route-map', () => {
       clearRiderPosition,
       showOffRouteWarning,
       hideOffRouteWarning,
+      showPOIs,
+      clearPOIs,
     })),
     setDefaultFactory: vi.fn(),
+  };
+});
+
+// Mock poi-fetcher module
+vi.mock('./poi-fetcher', () => {
+  return {
+    fetchPOIs: vi.fn().mockResolvedValue([
+      { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+    ]),
+    createOverpassClient: vi.fn(() => ({ query: vi.fn() })),
   };
 });
 
@@ -263,5 +279,91 @@ describe('upload GPS integration', () => {
     await flushFileReader();
 
     expect(handle.showRoute).toHaveBeenCalledOnce();
+  });
+});
+
+describe('upload refresh button', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setupDOM();
+    vi.clearAllMocks();
+  });
+
+  // Slice 12: Refresh button visible when route is loaded, hidden when cleared
+  it('shows refresh button when route loaded, hides on clear', async () => {
+    initUpload();
+    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
+
+    expect(refreshBtn.hidden).toBe(true);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    expect(refreshBtn.hidden).toBe(false);
+
+    const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
+    clearBtn.click();
+
+    expect(refreshBtn.hidden).toBe(true);
+  });
+
+  // Slice 13: Refresh button triggers POI fetch and displays results on map
+  it('clicking refresh fetches POIs and shows on map', async () => {
+    const { initRouteMap } = await import('./route-map');
+    const { fetchPOIs } = await import('./poi-fetcher');
+    initUpload();
+    const handle = vi.mocked(initRouteMap).mock.results[0].value;
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
+    refreshBtn.click();
+
+    // Wait for async fetch
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchPOIs).toHaveBeenCalledOnce();
+    expect(handle.showPOIs).toHaveBeenCalledOnce();
+  });
+
+  // Slice 14: Loading indicator shown during fetch, hidden after
+  it('shows loading indicator during fetch', async () => {
+    initUpload();
+    const loading = document.getElementById('loading-indicator') as HTMLElement;
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    expect(loading.hidden).toBe(true);
+
+    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
+    refreshBtn.click();
+
+    // Loading should eventually be hidden after fetch completes
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(loading.hidden).toBe(true);
+  });
+
+  // Slice 15: Error state on fetch failure
+  it('shows error on fetch failure and hides loading', async () => {
+    const { fetchPOIs } = await import('./poi-fetcher');
+    vi.mocked(fetchPOIs).mockRejectedValueOnce(new Error('Overpass API error'));
+
+    initUpload();
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
+    refreshBtn.click();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const loading = document.getElementById('loading-indicator') as HTMLElement;
+    const errorDisplay = document.getElementById('error-display') as HTMLElement;
+    expect(loading.hidden).toBe(true);
+    expect(errorDisplay.hidden).toBe(false);
+    expect(errorDisplay.textContent).toContain('Overpass API error');
   });
 });
