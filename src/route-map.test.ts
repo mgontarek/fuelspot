@@ -23,6 +23,7 @@ function createMockFactory() {
     fitBounds: vi.fn(),
     setView: vi.fn(),
     remove: vi.fn(),
+    invalidateSize: vi.fn(),
   };
   const mockTileLayer = { addTo: vi.fn().mockReturnThis() };
 
@@ -188,6 +189,56 @@ describe('route-map', () => {
     expect(mocks.factory.polyline).not.toHaveBeenCalled();
     expect(mocks.factory.marker).toHaveBeenCalledOnce();
     expect(mocks.mockMap.setView).toHaveBeenCalledWith([50, 20], 14);
+  });
+
+  // Cycle 12: invalidateSize is called when route is shown
+  it('calls invalidateSize after showRoute', () => {
+    const route = makeRoute([
+      { lat: 50, lng: 20 },
+      { lat: 51, lng: 21 },
+    ]);
+
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 0;
+      }),
+    );
+
+    handle.showRoute(route);
+
+    expect(mocks.mockMap.invalidateSize).toHaveBeenCalledOnce();
+
+    vi.unstubAllGlobals();
+  });
+
+  // Cycle 13: invalidateSize is deferred via requestAnimationFrame
+  it('defers invalidateSize via requestAnimationFrame', () => {
+    const route = makeRoute([
+      { lat: 50, lng: 20 },
+      { lat: 51, lng: 21 },
+    ]);
+
+    let rafCallback: FrameRequestCallback | null = null;
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((cb: FrameRequestCallback) => {
+        rafCallback = cb;
+        return 0;
+      }),
+    );
+
+    handle.showRoute(route);
+
+    // Not called synchronously
+    expect(mocks.mockMap.invalidateSize).not.toHaveBeenCalled();
+
+    // Called after rAF fires
+    rafCallback!(0);
+    expect(mocks.mockMap.invalidateSize).toHaveBeenCalledOnce();
+
+    vi.unstubAllGlobals();
   });
 
   // Cycle 11: Placeholder when no route
