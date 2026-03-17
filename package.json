@@ -11,9 +11,13 @@
     "test:run": "vitest run"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.21",
     "happy-dom": "^20.8.4",
     "typescript": "~5.9.3",
     "vite": "^8.0.0",
     "vitest": "^4.1.0"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4"
   }
 }

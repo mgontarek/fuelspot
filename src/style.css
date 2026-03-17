@@ -95,3 +95,23 @@ h1 {
 #clear-btn:active {
   background: #f3f4f6;
 }
+
+#map-container {
+  margin-top: 1rem;
+  width: 100%;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.map-inner {
+  width: 100%;
+  height: 300px;
+}
+
+.map-placeholder {
+  padding: 2rem 1rem;
+  color: #999;
+  font-size: 0.9rem;
+  background: #f3f4f6;
+  border-radius: 0.5rem;
+}
