@@ -1,5 +1,6 @@
 import { parseGPX } from './gpx-parser';
 import type { ParsedRoute } from './gpx-parser';
+import { initRouteMap } from './route-map';
 
 const STORAGE_KEY = 'fuelspot-gpx';
 
@@ -11,6 +12,9 @@ export function initUpload(): void {
   const routeName = document.getElementById('route-name') as HTMLElement;
   const pointCount = document.getElementById('point-count') as HTMLElement;
   const routeDistance = document.getElementById('route-distance') as HTMLElement;
+  const mapContainer = document.getElementById('map-container') as HTMLElement;
+
+  const mapHandle = initRouteMap(mapContainer);
 
   function showRoute(route: ParsedRoute): void {
     routeName.textContent = route.name ?? 'Unnamed route';
@@ -19,6 +23,7 @@ export function initUpload(): void {
     statsSection.hidden = false;
     errorSection.hidden = true;
     clearBtn.hidden = false;
+    mapHandle.showRoute(route);
   }
 
   function showError(message: string): void {
@@ -32,6 +37,7 @@ export function initUpload(): void {
     errorSection.hidden = true;
     clearBtn.hidden = true;
     fileInput.value = '';
+    mapHandle.clear();
   }
 
   // Load from localStorage on init
