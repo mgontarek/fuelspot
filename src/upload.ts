@@ -3,12 +3,16 @@ import type { ParsedRoute } from './gpx-parser';
 import { initRouteMap } from './route-map';
 import { initGpsTracker } from './gps-tracker';
 import type { GeolocationProvider, GpsTrackerHandle } from './gps-tracker';
+import { fetchPOIs, createOverpassClient } from './poi-fetcher';
+import type { OverpassClient } from './poi-fetcher';
 
 const STORAGE_KEY = 'fuelspot-gpx';
 
-export function initUpload(geo?: GeolocationProvider): void {
+export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassClient): void {
   const fileInput = document.getElementById('gpx-input') as HTMLInputElement;
   const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
+  const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
+  const loadingIndicator = document.getElementById('loading-indicator') as HTMLElement;
   const statsSection = document.getElementById('route-stats') as HTMLElement;
   const errorSection = document.getElementById('error-display') as HTMLElement;
   const routeName = document.getElementById('route-name') as HTMLElement;
@@ -17,8 +21,10 @@ export function initUpload(geo?: GeolocationProvider): void {
   const mapContainer = document.getElementById('map-container') as HTMLElement;
 
   const mapHandle = initRouteMap(mapContainer);
+  const client = overpassClient ?? createOverpassClient();
 
   let gpsTracker: GpsTrackerHandle | null = null;
+  let currentRoute: ParsedRoute | null = null;
 
   const geoProvider = geo ?? (typeof navigator !== 'undefined' && navigator.geolocation
     ? navigator.geolocation
@@ -40,12 +46,14 @@ export function initUpload(geo?: GeolocationProvider): void {
   }
 
   function showRoute(route: ParsedRoute): void {
+    currentRoute = route;
     routeName.textContent = route.name ?? 'Unnamed route';
     pointCount.textContent = `${route.points.length} points`;
     routeDistance.textContent = `${(route.totalDistance / 1000).toFixed(1)} km`;
     statsSection.hidden = false;
     errorSection.hidden = true;
     clearBtn.hidden = false;
+    refreshBtn.hidden = false;
     mapHandle.showRoute(route);
     gpsTracker?.start(route.points);
   }
@@ -57,11 +65,14 @@ export function initUpload(geo?: GeolocationProvider): void {
   }
 
   function resetUI(): void {
+    currentRoute = null;
     statsSection.hidden = true;
     errorSection.hidden = true;
     clearBtn.hidden = true;
+    refreshBtn.hidden = true;
     fileInput.value = '';
     mapHandle.clear();
+    mapHandle.clearPOIs();
     gpsTracker?.stop();
     mapHandle.clearRiderPosition();
     mapHandle.hideOffRouteWarning();
@@ -98,5 +109,22 @@ export function initUpload(geo?: GeolocationProvider): void {
   clearBtn.addEventListener('click', () => {
     localStorage.removeItem(STORAGE_KEY);
     resetUI();
+  });
+
+  refreshBtn.addEventListener('click', () => {
+    if (!currentRoute) return;
+    loadingIndicator.hidden = false;
+    errorSection.hidden = true;
+
+    fetchPOIs(currentRoute.points, client)
+      .then((pois) => {
+        mapHandle.showPOIs(pois);
+      })
+      .catch((err) => {
+        showError(err instanceof Error ? err.message : 'Failed to load stops');
+      })
+      .finally(() => {
+        loadingIndicator.hidden = true;
+      });
   });
 }

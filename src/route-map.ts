@@ -1,4 +1,5 @@
 import type { ParsedRoute } from './gpx-parser';
+import type { POI, POIType } from './poi-fetcher';
 import type * as L from 'leaflet';
 
 export interface RouteMapHandle {
@@ -9,6 +10,8 @@ export interface RouteMapHandle {
   clearRiderPosition(): void;
   showOffRouteWarning(): void;
   hideOffRouteWarning(): void;
+  showPOIs(pois: POI[]): void;
+  clearPOIs(): void;
 }
 
 export interface LeafletFactory {
@@ -24,6 +27,15 @@ export interface LeafletFactory {
     options?: L.CircleMarkerOptions,
   ): L.CircleMarker;
 }
+
+const POI_COLORS: Record<POIType, string> = {
+  fuel: '#ef4444',
+  convenience: '#22c55e',
+  supermarket: '#22c55e',
+  bakery: '#f59e0b',
+  restaurant: '#8b5cf6',
+  cafe: '#6366f1',
+};
 
 const DEFAULT_CENTER: L.LatLngExpression = [0, 0];
 const DEFAULT_ZOOM = 2;
@@ -159,6 +171,42 @@ export function initRouteMap(
     offRouteBanner.hidden = true;
   }
 
+  let poiMarkers: L.CircleMarker[] = [];
+
+  function clearPOIs(): void {
+    for (const m of poiMarkers) {
+      m.remove();
+    }
+    poiMarkers = [];
+  }
+
+  function showPOIs(pois: POI[]): void {
+    clearPOIs();
+    for (const poi of pois) {
+      const color = POI_COLORS[poi.type];
+      const cm = leaflet
+        .circleMarker([poi.lat, poi.lng], {
+          radius: 6,
+          color,
+          fillColor: color,
+          fillOpacity: 0.8,
+          weight: 2,
+        })
+        .addTo(map);
+
+      const cardText =
+        poi.acceptsCards === true
+          ? 'Cards: Yes'
+          : poi.acceptsCards === false
+            ? 'Cards: No'
+            : 'Cards: Unknown';
+      const popupHtml = `<strong>${poi.name ?? 'Unnamed'}</strong><br>${poi.type}<br>${cardText}`;
+      cm.bindPopup(popupHtml);
+
+      poiMarkers.push(cm);
+    }
+  }
+
   // Initial state: placeholder visible, map hidden
   mapDiv.hidden = true;
 
@@ -170,6 +218,8 @@ export function initRouteMap(
     clearRiderPosition,
     showOffRouteWarning,
     hideOffRouteWarning,
+    showPOIs,
+    clearPOIs,
   };
 }
 
