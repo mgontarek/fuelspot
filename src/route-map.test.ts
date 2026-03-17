@@ -29,6 +29,7 @@ function createMockFactory() {
 
   const polylines: Array<{ addTo: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; getBounds: ReturnType<typeof vi.fn> }> = [];
   const markers: Array<{ addTo: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }> = [];
+  const circleMarkers: Array<{ addTo: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; setLatLng: ReturnType<typeof vi.fn> }> = [];
 
   const factory: LeafletFactory = {
     map: vi.fn(() => mockMap) as unknown as LeafletFactory['map'],
@@ -49,9 +50,18 @@ function createMockFactory() {
       markers.push(m);
       return m;
     }) as unknown as LeafletFactory['marker'],
+    circleMarker: vi.fn(() => {
+      const cm = {
+        addTo: vi.fn().mockReturnThis(),
+        remove: vi.fn(),
+        setLatLng: vi.fn().mockReturnThis(),
+      };
+      circleMarkers.push(cm);
+      return cm;
+    }) as unknown as LeafletFactory['circleMarker'],
   };
 
-  return { factory, mockMap, mockTileLayer, polylines, markers };
+  return { factory, mockMap, mockTileLayer, polylines, markers, circleMarkers };
 }
 
 describe('route-map', () => {
@@ -257,5 +267,50 @@ describe('route-map', () => {
 
     handle.clear();
     expect(placeholder.hidden).toBe(false);
+  });
+
+  // Cycle 17: showRiderPosition creates circleMarker on map
+  it('showRiderPosition creates circleMarker on map', () => {
+    handle.showRiderPosition({ lat: 50.5, lng: 20.5 });
+
+    expect(mocks.factory.circleMarker).toHaveBeenCalledOnce();
+    const call = vi.mocked(mocks.factory.circleMarker).mock.calls[0];
+    expect(call[0]).toEqual([50.5, 20.5]);
+    expect(mocks.circleMarkers[0].addTo).toHaveBeenCalledWith(mocks.mockMap);
+  });
+
+  // Cycle 18: Subsequent showRiderPosition calls setLatLng
+  it('subsequent showRiderPosition calls setLatLng instead of creating new marker', () => {
+    handle.showRiderPosition({ lat: 50.5, lng: 20.5 });
+    handle.showRiderPosition({ lat: 50.6, lng: 20.6 });
+
+    expect(mocks.factory.circleMarker).toHaveBeenCalledOnce();
+    expect(mocks.circleMarkers[0].setLatLng).toHaveBeenCalledWith([50.6, 20.6]);
+  });
+
+  // Cycle 19: clearRiderPosition removes marker
+  it('clearRiderPosition removes the rider marker', () => {
+    handle.showRiderPosition({ lat: 50.5, lng: 20.5 });
+    handle.clearRiderPosition();
+
+    expect(mocks.circleMarkers[0].remove).toHaveBeenCalledOnce();
+  });
+
+  // Cycle 20: showOffRouteWarning shows banner
+  it('showOffRouteWarning shows the off-route banner', () => {
+    const banner = container.querySelector('.off-route-warning') as HTMLElement;
+    expect(banner.hidden).toBe(true);
+
+    handle.showOffRouteWarning();
+    expect(banner.hidden).toBe(false);
+  });
+
+  // Cycle 21: hideOffRouteWarning hides banner
+  it('hideOffRouteWarning hides the off-route banner', () => {
+    handle.showOffRouteWarning();
+    handle.hideOffRouteWarning();
+
+    const banner = container.querySelector('.off-route-warning') as HTMLElement;
+    expect(banner.hidden).toBe(true);
   });
 });
