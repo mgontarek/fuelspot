@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FuelSpot</title>
+  </head>
+  <body>
+    <div id="app">
+      <h1>FuelSpot</h1>
+      <p class="subtitle">Find open resupply stops along your route</p>
+
+      <label for="gpx-input" class="upload-label">
+        Upload GPX file
+        <input type="file" id="gpx-input" accept=".gpx" />
+      </label>
+
+      <section id="route-stats" hidden>
+        <h2 id="route-name"></h2>
+        <p id="point-count"></p>
+        <p id="route-distance"></p>
+      </section>
+
+      <p id="error-display" hidden></p>
+
+      <button id="clear-btn" type="button" hidden>Clear route</button>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
