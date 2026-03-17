@@ -64,6 +64,10 @@ export function initRouteMap(
     placeholder.hidden = true;
     mapDiv.hidden = false;
 
+    requestAnimationFrame(() => {
+      map.invalidateSize();
+    });
+
     const latlngs: L.LatLngExpression[] = route.points.map(
       (p) => [p.lat, p.lng] as [number, number],
     );
