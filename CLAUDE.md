@@ -23,15 +23,20 @@ FuelSpot is a static single-page app (no backend) for ultra-cyclists to find ope
 
 **Current modules:**
 
-- **`gpx-parser.ts`** — Pure function `parseGPX(gpxString) → ParsedRoute`. Handles namespace-aware XML parsing, trackpoint/routepoint extraction, haversine distance computation. Tested against real GPX exports from Komoot, Strava, and Garmin.
+- **`gpx-parser.ts`** — Pure function `parseGPX(gpxString) → ParsedRoute`. Handles namespace-aware XML parsing, trackpoint/routepoint extraction, haversine distance computation.
+- **`geo.ts`** — `haversine(a, b)` distance function shared across modules.
 - **`upload.ts`** — DOM layer. `initUpload()` wires up file input, persists GPX to localStorage (`fuelspot-gpx`), displays route stats.
-- **`main.ts`** — Entry point, imports and calls `initUpload()`.
-
-**Planned modules** (see `prd.md` for full spec): Route Matcher, POI Fetcher (Overpass API), Hours Evaluator (opening_hours), Stop Ranker.
+- **`route-map.ts`** — Leaflet map display with route visualization.
+- **`gps-tracker.ts`** — GPS position tracking.
+- **`route-matcher.ts`** — `matchPosition(route, position)` projects a lat/lng onto the route, returning cumulative distance and on/off-route status.
+- **`poi-fetcher.ts`** — Overpass API client with retry, cache, and POI parsing. Exports `POI` type.
+- **`hours-evaluator.ts`** — `evaluateHours(openingHours, at, parser)` evaluates OSM opening_hours strings via dependency-injected parser. `createOpeningHoursParser()` wraps the `opening_hours` library. `formatCountdown(from, to)` for human-readable time deltas.
+- **`stop-ranker.ts`** — `rankStops(params, deps)` ranks POIs by open/closed/unknown status and distance. On-route mode filters forward-only and sorts by route distance; off-route mode sorts by straight-line distance.
+- **`main.ts`** — Entry point.
 
 ## Key Decisions
 
-- **Zero runtime dependencies** — intentional for minimal bundle size. All build/test tooling is devDependencies only.
+- **Minimal runtime dependencies** — only `opening_hours` (~150KB) for OSM hours parsing. All other build/test tooling is devDependencies only.
 - **Mobile-first** — designed for one-handed use, 480px max-width.
 - **TDD** — tests use real-world GPX fixtures in `src/test-fixtures/gpx-samples.ts`. Test external behavior through public interface, not implementation details.
 - **Vite base path** is `/fuelspot/` for GitHub Pages subdirectory hosting.

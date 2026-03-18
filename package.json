@@ -18,6 +18,7 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
-    "leaflet": "^1.9.4"
+    "leaflet": "^1.9.4",
+    "opening_hours": "^3.11.0"
   }
 }
