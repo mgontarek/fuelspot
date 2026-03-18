@@ -4,6 +4,8 @@ import {
   buildOverpassQuery,
   parseOverpassResponse,
   fetchPOIs,
+  createOverpassClient,
+  createCachedFetcher,
 } from './poi-fetcher';
 import type { OverpassClient, OverpassResponse } from './poi-fetcher';
 
@@ -223,5 +225,132 @@ describe('fetchPOIs', () => {
     await expect(fetchPOIs(points, client)).rejects.toThrow(
       'Failed to fetch POIs: Network timeout',
     );
+  });
+});
+
+describe('createOverpassClient retry', () => {
+  const validResponse = { elements: [] };
+  const noDelay = () => Promise.resolve();
+
+  it('retries on 429 then resolves with data', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(validResponse) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = createOverpassClient({ delayFn: noDelay });
+    const result = await client.query('test');
+
+    expect(result).toEqual(validResponse);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects with friendly message after max retries exceeded', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 429 });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = createOverpassClient({ maxRetries: 3, delayFn: noDelay });
+
+    await expect(client.query('test')).rejects.toThrow(
+      'Overpass API is busy — please try again in a minute',
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(4); // 1 initial + 3 retries
+
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects immediately on non-429 errors without retry', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = createOverpassClient({ delayFn: noDelay });
+
+    await expect(client.query('test')).rejects.toThrow('Overpass API error: 500');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('calls delayFn with exponential backoff delays', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(validResponse) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const delaySpy = vi.fn(() => Promise.resolve());
+    const client = createOverpassClient({ baseDelay: 1000, delayFn: delaySpy });
+    await client.query('test');
+
+    expect(delaySpy).toHaveBeenCalledTimes(3);
+    expect(delaySpy).toHaveBeenNthCalledWith(1, 1000);
+    expect(delaySpy).toHaveBeenNthCalledWith(2, 2000);
+    expect(delaySpy).toHaveBeenNthCalledWith(3, 4000);
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('createCachedFetcher', () => {
+  it('returns cached result for same points', async () => {
+    const client: OverpassClient = {
+      query: vi.fn().mockResolvedValue({ elements: [
+        { id: 1, type: 'node', lat: 50, lon: 20, tags: { amenity: 'fuel', name: 'Test' } },
+      ] }),
+    };
+    const points = makePoints(3);
+    const cached = createCachedFetcher(client);
+
+    const first = await cached.fetch(points);
+    const second = await cached.fetch(points);
+
+    expect(client.query).toHaveBeenCalledTimes(1);
+    expect(first).toEqual(second);
+  });
+
+  it('re-fetches after TTL expires', async () => {
+    vi.useFakeTimers();
+    const client: OverpassClient = {
+      query: vi.fn().mockResolvedValue({ elements: [] }),
+    };
+    const points = makePoints(3);
+    const cached = createCachedFetcher(client, 5 * 60 * 1000); // 5 min TTL
+
+    await cached.fetch(points);
+    vi.advanceTimersByTime(6 * 60 * 1000); // advance 6 min
+    await cached.fetch(points);
+
+    expect(client.query).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('fetches separately for different points', async () => {
+    const client: OverpassClient = {
+      query: vi.fn().mockResolvedValue({ elements: [] }),
+    };
+    const cached = createCachedFetcher(client);
+
+    await cached.fetch(makePoints(3));
+    await cached.fetch(makePoints(5));
+
+    expect(client.query).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears cache so next call hits API again', async () => {
+    const client: OverpassClient = {
+      query: vi.fn().mockResolvedValue({ elements: [] }),
+    };
+    const points = makePoints(3);
+    const cached = createCachedFetcher(client);
+
+    await cached.fetch(points);
+    cached.clear();
+    await cached.fetch(points);
+
+    expect(client.query).toHaveBeenCalledTimes(2);
   });
 });

@@ -3,7 +3,7 @@ import type { ParsedRoute } from './gpx-parser';
 import { initRouteMap } from './route-map';
 import { initGpsTracker } from './gps-tracker';
 import type { GeolocationProvider, GpsTrackerHandle } from './gps-tracker';
-import { fetchPOIs, createOverpassClient } from './poi-fetcher';
+import { createOverpassClient, createCachedFetcher } from './poi-fetcher';
 import type { OverpassClient } from './poi-fetcher';
 
 const STORAGE_KEY = 'fuelspot-gpx';
@@ -22,6 +22,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
 
   const mapHandle = initRouteMap(mapContainer);
   const client = overpassClient ?? createOverpassClient();
+  const cachedFetcher = createCachedFetcher(client);
 
   let gpsTracker: GpsTrackerHandle | null = null;
   let currentRoute: ParsedRoute | null = null;
@@ -76,6 +77,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     gpsTracker?.stop();
     mapHandle.clearRiderPosition();
     mapHandle.hideOffRouteWarning();
+    cachedFetcher.clear();
   }
 
   // Load from localStorage on init
@@ -112,11 +114,12 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
   });
 
   refreshBtn.addEventListener('click', () => {
-    if (!currentRoute) return;
+    if (!currentRoute || refreshBtn.disabled) return;
+    refreshBtn.disabled = true;
     loadingIndicator.hidden = false;
     errorSection.hidden = true;
 
-    fetchPOIs(currentRoute.points, client)
+    cachedFetcher.fetch(currentRoute.points)
       .then((pois) => {
         mapHandle.showPOIs(pois);
       })
@@ -125,6 +128,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
       })
       .finally(() => {
         loadingIndicator.hidden = true;
+        refreshBtn.disabled = false;
       });
   });
 }

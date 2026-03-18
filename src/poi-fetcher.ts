@@ -123,16 +123,67 @@ function resolveCards(tags: Record<string, string>): boolean | null {
   return null;
 }
 
-export function createOverpassClient(): OverpassClient {
+export interface OverpassClientOptions {
+  maxRetries?: number;
+  baseDelay?: number;
+  delayFn?: (ms: number) => Promise<void>;
+}
+
+const defaultDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+export function createOverpassClient(options?: OverpassClientOptions): OverpassClient {
+  const maxRetries = options?.maxRetries ?? 3;
+  const baseDelay = options?.baseDelay ?? 1000;
+  const delayFn = options?.delayFn ?? defaultDelay;
+
   return {
     async query(overpassQL: string) {
-      const res = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: `data=${encodeURIComponent(overpassQL)}`,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      });
-      if (!res.ok) throw new Error(`Overpass API error: ${res.status}`);
-      return res.json();
+      let retries = 0;
+      while (true) {
+        const res = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: `data=${encodeURIComponent(overpassQL)}`,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
+        if (res.ok) return res.json();
+        if (res.status !== 429 || retries >= maxRetries) {
+          if (res.status === 429) {
+            throw new Error('Overpass API is busy — please try again in a minute');
+          }
+          throw new Error(`Overpass API error: ${res.status}`);
+        }
+        await delayFn(baseDelay * 2 ** retries);
+        retries++;
+      }
+    },
+  };
+}
+
+export interface CachedFetcher {
+  fetch(points: RoutePoint[]): Promise<POI[]>;
+  clear(): void;
+}
+
+export function createCachedFetcher(
+  client: OverpassClient,
+  ttl: number = 5 * 60 * 1000,
+): CachedFetcher {
+  const cache = new Map<string, { pois: POI[]; timestamp: number }>();
+
+  return {
+    async fetch(points: RoutePoint[]): Promise<POI[]> {
+      const query = buildOverpassQuery(points);
+      const entry = cache.get(query);
+      if (entry && Date.now() - entry.timestamp < ttl) {
+        return entry.pois;
+      }
+      const response = await client.query(query);
+      const pois = parseOverpassResponse(response);
+      cache.set(query, { pois, timestamp: Date.now() });
+      return pois;
+    },
+    clear() {
+      cache.clear();
     },
   };
 }
