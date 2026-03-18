@@ -380,4 +380,47 @@ describe('route-map', () => {
     handle.showPOIs(pois2);
     expect(firstMarker.remove).toHaveBeenCalledOnce();
   });
+
+  // Slice 14: highlightStop creates distinct marker
+  it('highlightStop creates orange circleMarker with radius 10', () => {
+    const poi: POI = { id: 1, name: 'Shell', type: 'fuel', lat: 50.1, lng: 20.1, openingHours: null, acceptsCards: null };
+    handle.highlightStop(poi);
+
+    const calls = vi.mocked(mocks.factory.circleMarker).mock.calls;
+    const lastCall = calls[calls.length - 1];
+    expect(lastCall[0]).toEqual([50.1, 20.1]);
+    expect(lastCall[1]).toMatchObject({ radius: 10, color: '#f97316' });
+  });
+
+  // Slice 15: highlightStop replaces previous
+  it('highlightStop replaces previous highlight', () => {
+    const poi1: POI = { id: 1, name: 'A', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null };
+    const poi2: POI = { id: 2, name: 'B', type: 'cafe', lat: 51, lng: 21, openingHours: null, acceptsCards: null };
+
+    handle.highlightStop(poi1);
+    const firstHighlight = mocks.circleMarkers[mocks.circleMarkers.length - 1];
+
+    handle.highlightStop(poi2);
+    expect(firstHighlight.remove).toHaveBeenCalledOnce();
+  });
+
+  // Slice 16: clearHighlight removes marker
+  it('clearHighlight removes highlight marker', () => {
+    const poi: POI = { id: 1, name: 'A', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null };
+    handle.highlightStop(poi);
+    const highlight = mocks.circleMarkers[mocks.circleMarkers.length - 1];
+
+    handle.clearHighlight();
+    expect(highlight.remove).toHaveBeenCalledOnce();
+  });
+
+  // Slice 17: zoomToFit calls fitBounds with positions
+  it('zoomToFit calls fitBounds with given positions and padding', () => {
+    handle.zoomToFit([{ lat: 50, lng: 20 }, { lat: 51, lng: 21 }]);
+
+    expect(mocks.mockMap.fitBounds).toHaveBeenCalledWith(
+      [[50, 20], [51, 21]],
+      { padding: [50, 50] },
+    );
+  });
 });

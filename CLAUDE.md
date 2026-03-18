@@ -25,8 +25,9 @@ FuelSpot is a static single-page app (no backend) for ultra-cyclists to find ope
 
 - **`gpx-parser.ts`** — Pure function `parseGPX(gpxString) → ParsedRoute`. Handles namespace-aware XML parsing, trackpoint/routepoint extraction, haversine distance computation.
 - **`geo.ts`** — `haversine(a, b)` distance function shared across modules.
-- **`upload.ts`** — DOM layer. `initUpload()` wires up file input, persists GPX to localStorage (`fuelspot-gpx`), displays route stats.
-- **`route-map.ts`** — Leaflet map display with route visualization.
+- **`upload.ts`** — DOM layer. `initUpload()` wires up file input, persists GPX to localStorage (`fuelspot-gpx`), displays route stats. Contains `searchAndDisplay()` pipeline that fetches POIs, ranks stops, and displays the #1 result. Auto-searches on first GPS fix after route load.
+- **`result-card.ts`** — `initResultCard(container) → ResultCardHandle` renders the top-ranked stop with status badge, distance, hours, and card payment info. Handles loading, error, empty, and waiting-for-GPS states.
+- **`route-map.ts`** — Leaflet map display with route visualization, POI pins, rider position, and highlighted #1 stop.
 - **`gps-tracker.ts`** — GPS position tracking.
 - **`route-matcher.ts`** — `matchPosition(route, position)` projects a lat/lng onto the route, returning cumulative distance and on/off-route status.
 - **`poi-fetcher.ts`** — Overpass API client with retry, cache, and POI parsing. Exports `POI` type.

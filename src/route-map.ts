@@ -12,6 +12,9 @@ export interface RouteMapHandle {
   hideOffRouteWarning(): void;
   showPOIs(pois: POI[]): void;
   clearPOIs(): void;
+  highlightStop(poi: POI): void;
+  clearHighlight(): void;
+  zoomToFit(positions: Array<{ lat: number; lng: number }>): void;
 }
 
 export interface LeafletFactory {
@@ -207,6 +210,34 @@ export function initRouteMap(
     }
   }
 
+  let highlightMarker: L.CircleMarker | null = null;
+
+  function highlightStop(poi: POI): void {
+    clearHighlight();
+    highlightMarker = leaflet
+      .circleMarker([poi.lat, poi.lng], {
+        radius: 10,
+        color: '#f97316',
+        fillColor: '#f97316',
+        fillOpacity: 0.9,
+        weight: 3,
+      })
+      .addTo(map);
+  }
+
+  function clearHighlight(): void {
+    if (highlightMarker) {
+      highlightMarker.remove();
+      highlightMarker = null;
+    }
+  }
+
+  function zoomToFit(positions: Array<{ lat: number; lng: number }>): void {
+    if (positions.length === 0) return;
+    const bounds = positions.map((p): [number, number] => [p.lat, p.lng]);
+    map.fitBounds(bounds, { padding: [50, 50] });
+  }
+
   // Initial state: placeholder visible, map hidden
   mapDiv.hidden = true;
 
@@ -220,6 +251,9 @@ export function initRouteMap(
     hideOffRouteWarning,
     showPOIs,
     clearPOIs,
+    highlightStop,
+    clearHighlight,
+    zoomToFit,
   };
 }
 
