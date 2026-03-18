@@ -18,6 +18,7 @@ function setupDOM(): void {
       <button id="clear-btn" type="button" hidden>Clear route</button>
       <button id="refresh-btn" type="button" hidden>Refresh stops</button>
       <p id="loading-indicator" hidden>Loading stops…</p>
+      <div id="result-card-container"></div>
       <div id="map-container"></div>
     </div>
   `;
@@ -27,7 +28,6 @@ function simulateFileUpload(content: string): void {
   const fileInput = document.getElementById('gpx-input') as HTMLInputElement;
   const file = new File([content], 'test.gpx', { type: 'application/gpx+xml' });
 
-  // Mock the files property
   Object.defineProperty(fileInput, 'files', {
     value: [file],
     writable: false,
@@ -38,7 +38,6 @@ function simulateFileUpload(content: string): void {
 }
 
 async function flushFileReader(): Promise<void> {
-  // Allow FileReader.onload to fire
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -54,6 +53,9 @@ vi.mock('./route-map', () => {
   const hideOffRouteWarning = vi.fn();
   const showPOIs = vi.fn();
   const clearPOIs = vi.fn();
+  const highlightStop = vi.fn();
+  const clearHighlight = vi.fn();
+  const zoomToFit = vi.fn();
   return {
     initRouteMap: vi.fn(() => ({
       showRoute,
@@ -65,8 +67,26 @@ vi.mock('./route-map', () => {
       hideOffRouteWarning,
       showPOIs,
       clearPOIs,
+      highlightStop,
+      clearHighlight,
+      zoomToFit,
     })),
     setDefaultFactory: vi.fn(),
+  };
+});
+
+// Mock result-card module
+const mockResultCard = {
+  showStop: vi.fn(),
+  showLoading: vi.fn(),
+  showError: vi.fn(),
+  showEmpty: vi.fn(),
+  showWaitingForGps: vi.fn(),
+  clear: vi.fn(),
+};
+vi.mock('./result-card', () => {
+  return {
+    initResultCard: vi.fn(() => mockResultCard),
   };
 });
 
@@ -84,6 +104,33 @@ vi.mock('./poi-fetcher', () => {
       fetch: mockFetch,
       clear: vi.fn(),
     })),
+  };
+});
+
+// Mock stop-ranker module
+const mockRankStops = vi.fn().mockReturnValue([
+  {
+    poi: { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+    hours: { status: 'open', nextChange: null, displayString: 'Open 24/7' },
+    distanceAlongRoute: 1500,
+    straightLineDistance: 1200,
+    countdown: null,
+  },
+]);
+vi.mock('./stop-ranker', () => {
+  return {
+    rankStops: (...args: unknown[]) => mockRankStops(...args),
+  };
+});
+
+// Mock hours-evaluator module
+vi.mock('./hours-evaluator', () => {
+  return {
+    evaluateHours: vi.fn().mockReturnValue({ status: 'unknown', nextChange: null, displayString: 'Hours unknown' }),
+    createOpeningHoursParser: vi.fn(() => ({
+      evaluate: vi.fn().mockReturnValue({ isOpen: false, isUnknown: true, nextChange: null }),
+    })),
+    formatCountdown: vi.fn().mockReturnValue('1h 30m'),
   };
 });
 
@@ -314,40 +361,61 @@ describe('upload refresh button', () => {
     expect(refreshBtn.hidden).toBe(true);
   });
 
-  // Slice 13: Refresh button triggers POI fetch and displays results on map
-  it('clicking refresh fetches POIs and shows on map', async () => {
+  // Slice 13: Refresh button triggers search pipeline when GPS available
+  it('clicking refresh with GPS runs search pipeline', async () => {
     const { initRouteMap } = await import('./route-map');
-    initUpload();
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
     const handle = vi.mocked(initRouteMap).mock.results[0].value;
 
     simulateFileUpload(MINIMAL_2_TRKPT);
     await flushFileReader();
 
+    // Give GPS position first
+    mockGeo.simulatePosition(50, 20);
+    // Wait for auto-search to complete
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Reset mocks after auto-search
+    vi.clearAllMocks();
+    mockFetch.mockResolvedValue([
+      { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+    ]);
+    mockRankStops.mockReturnValue([
+      {
+        poi: { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+        hours: { status: 'open', nextChange: null, displayString: 'Open 24/7' },
+        distanceAlongRoute: 1500,
+        straightLineDistance: 1200,
+        countdown: null,
+      },
+    ]);
+
     const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
     refreshBtn.click();
 
-    // Wait for async fetch
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(mockFetch).toHaveBeenCalledOnce();
+    expect(mockRankStops).toHaveBeenCalledOnce();
+    expect(mockResultCard.showStop).toHaveBeenCalledOnce();
+    expect(handle.highlightStop).toHaveBeenCalledOnce();
     expect(handle.showPOIs).toHaveBeenCalledOnce();
   });
 
   // Slice 14: Loading indicator shown during fetch, hidden after
   it('shows loading indicator during fetch', async () => {
-    initUpload();
-    const loading = document.getElementById('loading-indicator') as HTMLElement;
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
 
     simulateFileUpload(MINIMAL_2_TRKPT);
     await flushFileReader();
+    mockGeo.simulatePosition(50, 20);
 
-    expect(loading.hidden).toBe(true);
-
-    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
-    refreshBtn.click();
-
-    // Loading should eventually be hidden after fetch completes
+    // Wait for auto-search to finish
     await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const loading = document.getElementById('loading-indicator') as HTMLElement;
     expect(loading.hidden).toBe(true);
   });
 
@@ -355,21 +423,19 @@ describe('upload refresh button', () => {
   it('shows error on fetch failure and hides loading', async () => {
     mockFetch.mockRejectedValueOnce(new Error('Overpass API error'));
 
-    initUpload();
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
 
     simulateFileUpload(MINIMAL_2_TRKPT);
     await flushFileReader();
 
-    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
-    refreshBtn.click();
+    mockGeo.simulatePosition(50, 20);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const loading = document.getElementById('loading-indicator') as HTMLElement;
-    const errorDisplay = document.getElementById('error-display') as HTMLElement;
     expect(loading.hidden).toBe(true);
-    expect(errorDisplay.hidden).toBe(false);
-    expect(errorDisplay.textContent).toContain('Overpass API error');
+    expect(mockResultCard.showError).toHaveBeenCalled();
   });
 
   // Cycle 3: Debounce — two clicks while in-flight only fetches once
@@ -379,18 +445,21 @@ describe('upload refresh button', () => {
       () => new Promise((resolve) => { resolveFetch = resolve; }),
     );
 
-    initUpload();
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
 
     simulateFileUpload(MINIMAL_2_TRKPT);
     await flushFileReader();
 
-    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
-    refreshBtn.click(); // first click — starts fetch
-    refreshBtn.click(); // second click — should be ignored
+    mockGeo.simulatePosition(50, 20);
 
+    // auto-search is in flight, click refresh
+    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
+    refreshBtn.click();
+
+    // Should still be just 1 fetch (auto-search)
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
-    // Complete the fetch
     resolveFetch([]);
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
@@ -402,14 +471,16 @@ describe('upload refresh button', () => {
       () => new Promise((resolve) => { resolveFetch = resolve; }),
     );
 
-    initUpload();
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
 
     simulateFileUpload(MINIMAL_2_TRKPT);
     await flushFileReader();
 
-    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
-    refreshBtn.click();
+    mockGeo.simulatePosition(50, 20);
 
+    // auto-search in flight — button should be disabled
+    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
     expect(refreshBtn.disabled).toBe(true);
 
     resolveFetch([]);
@@ -424,7 +495,116 @@ describe('upload refresh button', () => {
       new Error('Failed to fetch POIs: Overpass API is busy — please try again in a minute'),
     );
 
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulatePosition(50, 20);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockResultCard.showError).toHaveBeenCalledWith(
+      expect.stringContaining('try again'),
+    );
+  });
+});
+
+describe('upload auto-search pipeline', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setupDOM();
+    vi.clearAllMocks();
+    mockFetch.mockResolvedValue([
+      { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+    ]);
+    mockRankStops.mockReturnValue([
+      {
+        poi: { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+        hours: { status: 'open', nextChange: null, displayString: 'Open 24/7' },
+        distanceAlongRoute: 1500,
+        straightLineDistance: 1200,
+        countdown: null,
+      },
+    ]);
+  });
+
+  // Slice 18: Result card initialized on init
+  it('initializes result card on init', async () => {
+    const { initResultCard } = await import('./result-card');
     initUpload();
+
+    expect(initResultCard).toHaveBeenCalledOnce();
+  });
+
+  // Slice 19: Route loaded without GPS shows "waiting for GPS"
+  it('shows waiting for GPS when route loaded without GPS position', async () => {
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    expect(mockResultCard.showWaitingForGps).toHaveBeenCalled();
+  });
+
+  // Slice 20: Auto-search fires on first GPS position
+  it('auto-search fires on first GPS position after route load', async () => {
+    const { initRouteMap } = await import('./route-map');
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+    const handle = vi.mocked(initRouteMap).mock.results[0].value;
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulatePosition(50, 20);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockFetch).toHaveBeenCalledOnce();
+    expect(mockRankStops).toHaveBeenCalledOnce();
+    expect(mockResultCard.showStop).toHaveBeenCalledOnce();
+    expect(handle.highlightStop).toHaveBeenCalledOnce();
+  });
+
+  // Slice 21: Auto-search doesn't re-trigger on subsequent GPS updates
+  it('auto-search fires only once', async () => {
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulatePosition(50, 20);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    mockGeo.simulatePosition(50.001, 20.001);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  // Slice 22: GPS denied shows error on result card
+  it('GPS denied shows error on result card', async () => {
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulateError(1);
+
+    expect(mockResultCard.showError).toHaveBeenCalledWith(
+      expect.stringContaining('GPS'),
+    );
+  });
+
+  // Slice 23: Refresh without GPS shows GPS warning
+  it('refresh without GPS shows GPS warning on result card', async () => {
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
 
     simulateFileUpload(MINIMAL_2_TRKPT);
     await flushFileReader();
@@ -432,9 +612,148 @@ describe('upload refresh button', () => {
     const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
     refreshBtn.click();
 
+    expect(mockResultCard.showError).toHaveBeenCalledWith(
+      expect.stringContaining('GPS'),
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  // Slice 25: Pipeline shows loading on card
+  it('pipeline shows loading on card before fetch', async () => {
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulatePosition(50, 20);
+
+    expect(mockResultCard.showLoading).toHaveBeenCalled();
+  });
+
+  // Slice 26: Empty ranking shows "no stops"
+  it('empty ranking shows no stops on card', async () => {
+    mockRankStops.mockReturnValue([]);
+
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulatePosition(50, 20);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const errorDisplay = document.getElementById('error-display') as HTMLElement;
-    expect(errorDisplay.textContent).toContain('try again');
+    expect(mockResultCard.showEmpty).toHaveBeenCalled();
+  });
+
+  // Slice 27: Fetch error shows error on card
+  it('fetch error shows error on card', async () => {
+    mockFetch.mockRejectedValue(new Error('Network error'));
+
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulatePosition(50, 20);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockResultCard.showError).toHaveBeenCalledWith(
+      expect.stringContaining('Network error'),
+    );
+  });
+
+  // Slice 28: Pipeline highlights #1 on map
+  it('pipeline highlights #1 stop on map', async () => {
+    const { initRouteMap } = await import('./route-map');
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+    const handle = vi.mocked(initRouteMap).mock.results[0].value;
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulatePosition(50, 20);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(handle.highlightStop).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1, name: 'Test POI' }),
+    );
+  });
+
+  // Slice 29: Pipeline zooms map to rider + #1 stop
+  it('pipeline zooms map to rider and #1 stop', async () => {
+    const { initRouteMap } = await import('./route-map');
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+    const handle = vi.mocked(initRouteMap).mock.results[0].value;
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulatePosition(50, 20);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(handle.zoomToFit).toHaveBeenCalledWith([
+      { lat: 50, lng: 20 },
+      { lat: 50, lng: 20 },
+    ]);
+  });
+
+  // Slice 30: Clear resets card and highlight
+  it('clear resets result card and map highlight', async () => {
+    const { initRouteMap } = await import('./route-map');
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+    const handle = vi.mocked(initRouteMap).mock.results[0].value;
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
+    clearBtn.click();
+
+    expect(mockResultCard.clear).toHaveBeenCalled();
+    expect(handle.clearHighlight).toHaveBeenCalled();
+  });
+
+  // Slice 31: New file upload resets auto-search flag
+  it('new file upload resets auto-search flag', async () => {
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulatePosition(50, 20);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // Upload new file
+    vi.clearAllMocks();
+    mockFetch.mockResolvedValue([
+      { id: 2, name: 'New POI', type: 'cafe', lat: 51, lng: 21, openingHours: null, acceptsCards: null },
+    ]);
+    mockRankStops.mockReturnValue([
+      {
+        poi: { id: 2, name: 'New POI', type: 'cafe', lat: 51, lng: 21, openingHours: null, acceptsCards: null },
+        hours: { status: 'open', nextChange: null, displayString: 'Open 24/7' },
+        distanceAlongRoute: 2000,
+        straightLineDistance: 1500,
+        countdown: null,
+      },
+    ]);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    // GPS arrives again — should trigger auto-search again
+    mockGeo.simulatePosition(50, 20);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
