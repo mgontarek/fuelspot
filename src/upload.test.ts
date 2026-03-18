@@ -71,12 +71,19 @@ vi.mock('./route-map', () => {
 });
 
 // Mock poi-fetcher module
+const mockFetch = vi.fn().mockResolvedValue([
+  { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+]);
 vi.mock('./poi-fetcher', () => {
   return {
     fetchPOIs: vi.fn().mockResolvedValue([
       { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
     ]),
     createOverpassClient: vi.fn(() => ({ query: vi.fn() })),
+    createCachedFetcher: vi.fn(() => ({
+      fetch: mockFetch,
+      clear: vi.fn(),
+    })),
   };
 });
 
@@ -310,7 +317,6 @@ describe('upload refresh button', () => {
   // Slice 13: Refresh button triggers POI fetch and displays results on map
   it('clicking refresh fetches POIs and shows on map', async () => {
     const { initRouteMap } = await import('./route-map');
-    const { fetchPOIs } = await import('./poi-fetcher');
     initUpload();
     const handle = vi.mocked(initRouteMap).mock.results[0].value;
 
@@ -323,7 +329,7 @@ describe('upload refresh button', () => {
     // Wait for async fetch
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(fetchPOIs).toHaveBeenCalledOnce();
+    expect(mockFetch).toHaveBeenCalledOnce();
     expect(handle.showPOIs).toHaveBeenCalledOnce();
   });
 
@@ -347,8 +353,7 @@ describe('upload refresh button', () => {
 
   // Slice 15: Error state on fetch failure
   it('shows error on fetch failure and hides loading', async () => {
-    const { fetchPOIs } = await import('./poi-fetcher');
-    vi.mocked(fetchPOIs).mockRejectedValueOnce(new Error('Overpass API error'));
+    mockFetch.mockRejectedValueOnce(new Error('Overpass API error'));
 
     initUpload();
 
@@ -365,5 +370,71 @@ describe('upload refresh button', () => {
     expect(loading.hidden).toBe(true);
     expect(errorDisplay.hidden).toBe(false);
     expect(errorDisplay.textContent).toContain('Overpass API error');
+  });
+
+  // Cycle 3: Debounce — two clicks while in-flight only fetches once
+  it('ignores clicks while fetch is in-flight', async () => {
+    let resolveFetch!: (value: unknown[]) => void;
+    mockFetch.mockImplementation(
+      () => new Promise((resolve) => { resolveFetch = resolve; }),
+    );
+
+    initUpload();
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
+    refreshBtn.click(); // first click — starts fetch
+    refreshBtn.click(); // second click — should be ignored
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // Complete the fetch
+    resolveFetch([]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  // Cycle 3: Button re-enabled after fetch completes
+  it('re-enables refresh button after fetch completes', async () => {
+    let resolveFetch!: (value: unknown[]) => void;
+    mockFetch.mockImplementation(
+      () => new Promise((resolve) => { resolveFetch = resolve; }),
+    );
+
+    initUpload();
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
+    refreshBtn.click();
+
+    expect(refreshBtn.disabled).toBe(true);
+
+    resolveFetch([]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(refreshBtn.disabled).toBe(false);
+  });
+
+  // Cycle 4: Friendly error message displayed in UI
+  it('shows friendly error from retry exhaustion', async () => {
+    mockFetch.mockRejectedValueOnce(
+      new Error('Failed to fetch POIs: Overpass API is busy — please try again in a minute'),
+    );
+
+    initUpload();
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
+    refreshBtn.click();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const errorDisplay = document.getElementById('error-display') as HTMLElement;
+    expect(errorDisplay.textContent).toContain('try again');
   });
 });
