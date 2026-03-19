@@ -30,6 +30,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
   const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
   const loadingIndicator = document.getElementById('loading-indicator') as HTMLElement;
   const statsSection = document.getElementById('route-stats') as HTMLElement;
+  const warningSection = document.getElementById('warning-display') as HTMLElement;
   const errorSection = document.getElementById('error-display') as HTMLElement;
   const routeName = document.getElementById('route-name') as HTMLElement;
   const pointCount = document.getElementById('point-count') as HTMLElement;
@@ -163,6 +164,19 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     }
   }
 
+  function showWarning(message: string): void {
+    warningSection.textContent = message;
+    warningSection.hidden = false;
+  }
+
+  function trySaveRoute(gpxString: string): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, gpxString);
+    } catch {
+      showWarning(tt('storage.quotaWarning'));
+    }
+  }
+
   function showError(message: string): void {
     errorSection.textContent = message;
     errorSection.hidden = false;
@@ -174,6 +188,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     hasAutoSearched = false;
     statsSection.hidden = true;
     errorSection.hidden = true;
+    warningSection.hidden = true;
     clearBtn.hidden = true;
     refreshBtn.hidden = true;
     fileInput.value = '';
@@ -217,9 +232,10 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     const reader = new FileReader();
     reader.onload = () => {
       const gpxString = reader.result as string;
+      warningSection.hidden = true;
       try {
         const route = parseGPX(gpxString);
-        localStorage.setItem(STORAGE_KEY, gpxString);
+        trySaveRoute(gpxString);
         showRoute(route);
       } catch (err) {
         showError(err instanceof Error ? err.message : tt('route.parseFailed'));
@@ -255,6 +271,7 @@ function fallbackUpload(key: string, params?: Record<string, string | number>): 
     'route.distance': '{distance} km',
     'route.parseFailed': 'Failed to parse GPX',
     'route.loadFailed': 'Failed to load stops',
+    'storage.quotaWarning': 'Route is too large to save for offline use — it will not persist across reloads',
   };
   let value = map[key] ?? key;
   if (params) {
