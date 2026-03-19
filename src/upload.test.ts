@@ -24,7 +24,6 @@ function setupDOM(): void {
         <button id="clear-btn" type="button" hidden data-i18n="upload.clear">Clear route</button>
         <button id="refresh-btn" type="button" hidden data-i18n="upload.refresh">Refresh stops</button>
       </div>
-      <p id="loading-indicator" hidden data-i18n="upload.loading">Loading stops…</p>
       <div id="result-card-container"></div>
       <div id="map-container"></div>
     </div>
@@ -139,6 +138,19 @@ vi.mock('./hours-evaluator', () => {
     })),
     formatCountdown: vi.fn().mockReturnValue('1h 30m'),
   };
+});
+
+describe('no duplicate loading indicator', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setupDOM();
+    vi.clearAllMocks();
+  });
+
+  it('does not have a #loading-indicator element in the DOM', () => {
+    initUpload();
+    expect(document.getElementById('loading-indicator')).toBeNull();
+  });
 });
 
 describe('upload integration with map', () => {
@@ -410,8 +422,8 @@ describe('upload refresh button', () => {
     expect(handle.showPOIs).toHaveBeenCalledOnce();
   });
 
-  // Slice 14: Loading indicator shown during fetch, hidden after
-  it('shows loading indicator during fetch', async () => {
+  // Slice 14: Result card loading shown during fetch
+  it('shows loading on result card during fetch', async () => {
     const mockGeo = createMockGeo();
     initUpload(mockGeo.geo);
 
@@ -419,15 +431,11 @@ describe('upload refresh button', () => {
     await flushFileReader();
     mockGeo.simulatePosition(50, 20);
 
-    // Wait for auto-search to finish
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    const loading = document.getElementById('loading-indicator') as HTMLElement;
-    expect(loading.hidden).toBe(true);
+    expect(mockResultCard.showLoading).toHaveBeenCalled();
   });
 
   // Slice 15: Error state on fetch failure
-  it('shows error on fetch failure and hides loading', async () => {
+  it('shows error on fetch failure', async () => {
     mockFetch.mockRejectedValueOnce(new Error('Overpass API error'));
 
     const mockGeo = createMockGeo();
@@ -440,8 +448,6 @@ describe('upload refresh button', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const loading = document.getElementById('loading-indicator') as HTMLElement;
-    expect(loading.hidden).toBe(true);
     expect(mockResultCard.showError).toHaveBeenCalled();
   });
 
