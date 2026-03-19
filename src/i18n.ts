@@ -56,6 +56,7 @@ const en: Record<string, string> = {
   'map.placeholder': 'Upload a GPX file to see your route on the map',
   'map.offRoute': 'You are off route',
   'overpass.busy': 'Overpass API is busy — please try again in a minute',
+  'storage.quotaWarning': 'Route is too large to save for offline use — it will not persist across reloads',
   'lang.toggle': 'PL',
 };
 
@@ -106,6 +107,7 @@ const pl: Record<string, string> = {
   'map.placeholder': 'Wgraj plik GPX, aby zobaczyć trasę na mapie',
   'map.offRoute': 'Jesteś poza trasą',
   'overpass.busy': 'Serwer Overpass jest zajęty — spróbuj ponownie za minutę',
+  'storage.quotaWarning': 'Trasa jest za duży, aby zapisać do użytku offline — nie zostanie zachowana po odświeżeniu',
   'lang.toggle': 'EN',
 };
 

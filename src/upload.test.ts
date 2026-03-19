@@ -18,6 +18,7 @@ function setupDOM(): void {
         <p id="point-count"></p>
         <p id="route-distance"></p>
       </section>
+      <p id="warning-display" hidden></p>
       <p id="error-display" hidden></p>
       <div class="action-buttons">
         <button id="clear-btn" type="button" hidden data-i18n="upload.clear">Clear route</button>
@@ -825,5 +826,88 @@ describe('upload i18n integration', () => {
 
     i18n.setLocale('pl');
     expect(subtitle.textContent).toBe('Znajdź otwarte sklepy na trasie');
+  });
+});
+
+describe('upload localStorage quota handling', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setupDOM();
+    vi.clearAllMocks();
+  });
+
+  function stubSetItemQuotaError(): void {
+    const original = localStorage.setItem.bind(localStorage);
+    vi.spyOn(localStorage, 'setItem').mockImplementation((key: string, value: string) => {
+      if (key === 'fuelspot-gpx') {
+        throw new DOMException('quota exceeded', 'QuotaExceededError');
+      }
+      return original(key, value);
+    });
+  }
+
+  // Cycle 1: Route displays despite quota error
+  it('displays route when localStorage.setItem throws QuotaExceededError', async () => {
+    stubSetItemQuotaError();
+    initUpload();
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const stats = document.getElementById('route-stats') as HTMLElement;
+    const error = document.getElementById('error-display') as HTMLElement;
+    expect(stats.hidden).toBe(false);
+    expect(error.hidden).toBe(true);
+  });
+
+  // Cycle 2: Non-blocking warning shown
+  it('shows warning when localStorage.setItem throws QuotaExceededError', async () => {
+    stubSetItemQuotaError();
+    initUpload();
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const warning = document.getElementById('warning-display') as HTMLElement;
+    expect(warning.hidden).toBe(false);
+    expect(warning.textContent).toBeTruthy();
+  });
+
+  // Cycle 3: Clear frees storage, re-upload succeeds without warning
+  it('clear hides warning, re-upload without quota error shows no warning', async () => {
+    stubSetItemQuotaError();
+    initUpload();
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const warning = document.getElementById('warning-display') as HTMLElement;
+    expect(warning.hidden).toBe(false);
+
+    // Click clear
+    const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
+    clearBtn.click();
+    expect(warning.hidden).toBe(true);
+
+    // Restore setItem
+    vi.restoreAllMocks();
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    expect(warning.hidden).toBe(true);
+  });
+
+  // Cycle 4: i18n integration — Polish warning text
+  it('shows Polish warning text when locale is pl', async () => {
+    stubSetItemQuotaError();
+    const i18n = createI18n('pl');
+    initUpload(undefined, undefined, i18n);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const warning = document.getElementById('warning-display') as HTMLElement;
+    expect(warning.textContent).toContain('za duży');
   });
 });
