@@ -85,7 +85,7 @@ describe('i18n core', () => {
     // Get all EN keys by testing known keys
     const knownKeys = [
       'app.title', 'app.subtitle',
-      'upload.label', 'upload.clear', 'upload.refresh', 'upload.loading',
+      'upload.label', 'upload.clear', 'upload.refresh',
       'route.unnamed', 'route.points', 'route.distance', 'route.parseFailed', 'route.loadFailed',
       'gps.denied', 'gps.unavailable', 'gps.waiting',
       'card.searching', 'card.empty', 'card.unnamed', 'card.hoursUnknown', 'card.opensIn',

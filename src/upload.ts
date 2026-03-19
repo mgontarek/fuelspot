@@ -28,7 +28,6 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
   const fileInput = document.getElementById('gpx-input') as HTMLInputElement;
   const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
   const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
-  const loadingIndicator = document.getElementById('loading-indicator') as HTMLElement;
   const statsSection = document.getElementById('route-stats') as HTMLElement;
   const warningSection = document.getElementById('warning-display') as HTMLElement;
   const errorSection = document.getElementById('error-display') as HTMLElement;
@@ -100,7 +99,6 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     pipelineInFlight = true;
     refreshBtn.disabled = true;
     resultCard.showLoading();
-    loadingIndicator.hidden = false;
     errorSection.hidden = true;
 
     try {
@@ -140,7 +138,6 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
       const message = err instanceof Error ? err.message : tt('route.loadFailed');
       resultCard.showError(message);
     } finally {
-      loadingIndicator.hidden = true;
       refreshBtn.disabled = false;
       pipelineInFlight = false;
     }
