@@ -2,6 +2,7 @@ import type { ParsedRoute } from './gpx-parser';
 import type { POI, POIType } from './poi-fetcher';
 import type * as L from 'leaflet';
 import type { I18n } from './i18n';
+import { formatDistance } from './geo';
 
 export interface RouteMapHandle {
   showRoute(route: ParsedRoute): void;
@@ -9,7 +10,7 @@ export interface RouteMapHandle {
   destroy(): void;
   showRiderPosition(position: { lat: number; lng: number }): void;
   clearRiderPosition(): void;
-  showOffRouteWarning(): void;
+  showOffRouteWarning(distanceMeters: number): void;
   hideOffRouteWarning(): void;
   showPOIs(pois: POI[]): void;
   clearPOIs(): void;
@@ -44,7 +45,6 @@ const POI_COLORS: Record<POIType, string> = {
 const DEFAULT_CENTER: L.LatLngExpression = [0, 0];
 const DEFAULT_ZOOM = 2;
 const PLACEHOLDER_TEXT = 'Upload a GPX file to see your route on the map';
-const OFF_ROUTE_TEXT = 'You are off route';
 
 export function initRouteMap(
   container: HTMLElement,
@@ -81,7 +81,6 @@ export function initRouteMap(
 
   const offRouteBanner = document.createElement('div');
   offRouteBanner.className = 'off-route-warning';
-  offRouteBanner.textContent = tt('map.offRoute', OFF_ROUTE_TEXT);
   offRouteBanner.hidden = true;
   container.appendChild(offRouteBanner);
 
@@ -173,7 +172,11 @@ export function initRouteMap(
     }
   }
 
-  function showOffRouteWarning(): void {
+  function showOffRouteWarning(distanceMeters: number): void {
+    const distance = formatDistance(distanceMeters, i18n);
+    offRouteBanner.textContent = i18n
+      ? i18n.t('map.offRouteDistance', { distance })
+      : `You are off route — ${distance} away`;
     offRouteBanner.hidden = false;
   }
 

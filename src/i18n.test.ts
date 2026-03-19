@@ -95,7 +95,8 @@ describe('i18n core', () => {
       'hours.unknown', 'hours.openUntil', 'hours.open247', 'hours.opensAt', 'hours.opensDay', 'hours.closed',
       'countdown.lessThanMinute', 'countdown.minutes', 'countdown.hoursMinutes',
       'poi.fuel', 'poi.convenience', 'poi.supermarket', 'poi.bakery', 'poi.restaurant', 'poi.cafe',
-      'map.placeholder', 'map.offRoute',
+      'map.placeholder', 'map.offRoute', 'map.offRouteDistance',
+      'distance.m', 'distance.km',
       'overpass.busy',
       'lang.toggle',
     ];

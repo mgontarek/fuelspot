@@ -24,7 +24,7 @@ FuelSpot is a static single-page app (no backend) for ultra-cyclists to find ope
 **Current modules:**
 
 - **`gpx-parser.ts`** — Pure function `parseGPX(gpxString) → ParsedRoute`. Handles namespace-aware XML parsing, trackpoint/routepoint extraction, haversine distance computation.
-- **`geo.ts`** — `haversine(a, b)` distance function shared across modules.
+- **`geo.ts`** — `haversine(a, b)` distance function shared across modules. `formatDistance(meters, i18n?)` formats a distance as `"800 m"` or `"1.5 km"` with optional i18n support.
 - **`i18n.ts`** — `createI18n(initialLocale?) → I18n` provides EN/PL internationalization. Flat dot-namespaced keys with `{param}` substitution. Persists to `localStorage('fuelspot-lang')`. `onChange(cb)` for reactive re-rendering on locale switch.
 - **`upload.ts`** — DOM layer. `initUpload(geo?, client?, i18n?)` wires up file input, persists GPX to localStorage (`fuelspot-gpx`) via best-effort `trySaveRoute()` (catches `QuotaExceededError` and shows a non-blocking warning), displays route stats. Contains `searchAndDisplay()` pipeline that fetches POIs, ranks stops, and displays the #1 result. Auto-searches on first GPS fix after route load. `applyStaticTranslations(i18n)` updates `[data-i18n]` elements.
 - **`result-card.ts`** — `initResultCard(container, i18n?) → ResultCardHandle` renders the top-ranked stop with status badge, distance, hours, and card payment info. Handles loading, error, empty, and waiting-for-GPS states.

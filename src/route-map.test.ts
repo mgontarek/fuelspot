@@ -299,18 +299,34 @@ describe('route-map', () => {
     expect(mocks.circleMarkers[0].remove).toHaveBeenCalledOnce();
   });
 
-  // Cycle 20: showOffRouteWarning shows banner
-  it('showOffRouteWarning shows the off-route banner', () => {
+  // Cycle 20: showOffRouteWarning shows banner with distance
+  it('showOffRouteWarning shows the off-route banner with distance in km', () => {
     const banner = container.querySelector('.off-route-warning') as HTMLElement;
     expect(banner.hidden).toBe(true);
 
-    handle.showOffRouteWarning();
+    handle.showOffRouteWarning(1500);
     expect(banner.hidden).toBe(false);
+    expect(banner.textContent).toBe('You are off route — 1.5 km away');
+  });
+
+  it('showOffRouteWarning shows distance in meters when under 1km', () => {
+    handle.showOffRouteWarning(800);
+    const banner = container.querySelector('.off-route-warning') as HTMLElement;
+    expect(banner.textContent).toBe('You are off route — 800 m away');
+  });
+
+  it('showOffRouteWarning updates text dynamically', () => {
+    const banner = container.querySelector('.off-route-warning') as HTMLElement;
+    handle.showOffRouteWarning(800);
+    expect(banner.textContent).toBe('You are off route — 800 m away');
+
+    handle.showOffRouteWarning(1500);
+    expect(banner.textContent).toBe('You are off route — 1.5 km away');
   });
 
   // Cycle 21: hideOffRouteWarning hides banner
   it('hideOffRouteWarning hides the off-route banner', () => {
-    handle.showOffRouteWarning();
+    handle.showOffRouteWarning(500);
     handle.hideOffRouteWarning();
 
     const banner = container.querySelector('.off-route-warning') as HTMLElement;
@@ -442,16 +458,16 @@ describe('route-map with i18n', () => {
     expect(placeholder.textContent).toBe('Wgraj plik GPX, aby zobaczyć trasę na mapie');
   });
 
-  // Slice 28: off-route warning uses translated text
-  it('off-route warning uses translated text', () => {
+  // Slice 28: off-route warning uses translated text with distance
+  it('off-route warning uses translated text with distance', () => {
     const container = document.createElement('div');
     const mocks = createMockFactory();
     const i18n = createI18n('pl');
     const handle = initRouteMap(container, mocks.factory, i18n);
 
-    handle.showOffRouteWarning();
+    handle.showOffRouteWarning(1500);
     const banner = container.querySelector('.off-route-warning') as HTMLElement;
-    expect(banner.textContent).toBe('Jesteś poza trasą');
+    expect(banner.textContent).toBe('Jesteś poza trasą — 1.5 km');
   });
 
   // Slice 29: POI popup uses translated type + cards

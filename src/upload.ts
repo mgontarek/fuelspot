@@ -69,7 +69,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
       if (state.match.isOnRoute) {
         mapHandle.hideOffRouteWarning();
       } else {
-        mapHandle.showOffRouteWarning();
+        mapHandle.showOffRouteWarning(state.match.distanceFromRoute);
       }
     }
 
