@@ -836,9 +836,9 @@ describe('upload localStorage quota handling', () => {
     vi.clearAllMocks();
   });
 
-  function stubSetItemQuotaError(): void {
+  function stubSetItemQuotaError() {
     const original = localStorage.setItem.bind(localStorage);
-    vi.spyOn(localStorage, 'setItem').mockImplementation((key: string, value: string) => {
+    return vi.spyOn(localStorage, 'setItem').mockImplementation((key: string, value: string) => {
       if (key === 'fuelspot-gpx') {
         throw new DOMException('quota exceeded', 'QuotaExceededError');
       }
@@ -875,7 +875,7 @@ describe('upload localStorage quota handling', () => {
 
   // Cycle 3: Clear frees storage, re-upload succeeds without warning
   it('clear hides warning, re-upload without quota error shows no warning', async () => {
-    stubSetItemQuotaError();
+    const spy = stubSetItemQuotaError();
     initUpload();
 
     simulateFileUpload(MINIMAL_2_TRKPT);
@@ -889,8 +889,8 @@ describe('upload localStorage quota handling', () => {
     clearBtn.click();
     expect(warning.hidden).toBe(true);
 
-    // Restore setItem
-    vi.restoreAllMocks();
+    // Stop throwing on setItem — simulate storage freed
+    spy.mockRestore();
 
     simulateFileUpload(MINIMAL_2_TRKPT);
     await flushFileReader();
