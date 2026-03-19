@@ -19,8 +19,10 @@ function setupDOM(): void {
         <p id="route-distance"></p>
       </section>
       <p id="error-display" hidden></p>
-      <button id="clear-btn" type="button" hidden data-i18n="upload.clear">Clear route</button>
-      <button id="refresh-btn" type="button" hidden data-i18n="upload.refresh">Refresh stops</button>
+      <div class="action-buttons">
+        <button id="clear-btn" type="button" hidden data-i18n="upload.clear">Clear route</button>
+        <button id="refresh-btn" type="button" hidden data-i18n="upload.refresh">Refresh stops</button>
+      </div>
       <p id="loading-indicator" hidden data-i18n="upload.loading">Loading stops…</p>
       <div id="result-card-container"></div>
       <div id="map-container"></div>
