@@ -10,10 +10,21 @@ import { rankStops } from './stop-ranker';
 import { evaluateHours, createOpeningHoursParser } from './hours-evaluator';
 import { matchPosition } from './route-matcher';
 import { haversine } from './geo';
+import type { I18n } from './i18n';
 
 const STORAGE_KEY = 'fuelspot-gpx';
 
-export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassClient): void {
+export function applyStaticTranslations(i18n: I18n): void {
+  const elements = document.querySelectorAll('[data-i18n]');
+  for (const el of elements) {
+    const key = el.getAttribute('data-i18n');
+    if (key) {
+      el.textContent = i18n.t(key);
+    }
+  }
+}
+
+export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassClient, i18n?: I18n): void {
   const fileInput = document.getElementById('gpx-input') as HTMLInputElement;
   const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
   const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
@@ -26,8 +37,16 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
   const mapContainer = document.getElementById('map-container') as HTMLElement;
   const resultCardContainer = document.getElementById('result-card-container') as HTMLElement;
 
-  const mapHandle = initRouteMap(mapContainer);
-  const resultCard = initResultCard(resultCardContainer);
+  function tt(key: string, params?: Record<string, string | number>): string {
+    return i18n ? i18n.t(key, params) : fallbackUpload(key, params);
+  }
+
+  if (i18n) {
+    applyStaticTranslations(i18n);
+  }
+
+  const mapHandle = initRouteMap(mapContainer, undefined, i18n);
+  const resultCard = initResultCard(resultCardContainer, i18n);
   const client = overpassClient ?? createOverpassClient();
   const cachedFetcher = createCachedFetcher(client);
   const hoursParser = createOpeningHoursParser();
@@ -54,7 +73,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     }
 
     if (state.error === 'denied' && currentRoute) {
-      resultCard.showError('GPS access denied — enable location to find stops');
+      resultCard.showError(tt('gps.denied'));
       return;
     }
 
@@ -73,7 +92,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
 
     const gpsState = gpsTracker?.getState();
     if (!gpsState?.position) {
-      resultCard.showError('GPS position not available — enable location to find stops');
+      resultCard.showError(tt('gps.unavailable'));
       return;
     }
 
@@ -99,7 +118,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
           at: new Date(),
         },
         {
-          evaluateHours: (oh, at) => evaluateHours(oh, at, hoursParser),
+          evaluateHours: (oh, at) => evaluateHours(oh, at, hoursParser, i18n),
           matchPosition,
           haversine,
         },
@@ -117,7 +136,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
         mapHandle.zoomToFit([position, { lat: top.poi.lat, lng: top.poi.lng }]);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load stops';
+      const message = err instanceof Error ? err.message : tt('route.loadFailed');
       resultCard.showError(message);
     } finally {
       loadingIndicator.hidden = true;
@@ -129,9 +148,9 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
   function showRoute(route: ParsedRoute): void {
     currentRoute = route;
     hasAutoSearched = false;
-    routeName.textContent = route.name ?? 'Unnamed route';
-    pointCount.textContent = `${route.points.length} points`;
-    routeDistance.textContent = `${(route.totalDistance / 1000).toFixed(1)} km`;
+    routeName.textContent = route.name ?? tt('route.unnamed');
+    pointCount.textContent = tt('route.points', { count: route.points.length });
+    routeDistance.textContent = tt('route.distance', { distance: (route.totalDistance / 1000).toFixed(1) });
     statsSection.hidden = false;
     errorSection.hidden = true;
     clearBtn.hidden = false;
@@ -168,6 +187,19 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     cachedFetcher.clear();
   }
 
+  // Subscribe to locale changes to re-render static text
+  if (i18n) {
+    i18n.onChange(() => {
+      applyStaticTranslations(i18n);
+      // Re-render route stats if a route is loaded
+      if (currentRoute) {
+        routeName.textContent = currentRoute.name ?? tt('route.unnamed');
+        pointCount.textContent = tt('route.points', { count: currentRoute.points.length });
+        routeDistance.textContent = tt('route.distance', { distance: (currentRoute.totalDistance / 1000).toFixed(1) });
+      }
+    });
+  }
+
   // Load from localStorage on init
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
@@ -190,7 +222,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
         localStorage.setItem(STORAGE_KEY, gpxString);
         showRoute(route);
       } catch (err) {
-        showError(err instanceof Error ? err.message : 'Failed to parse GPX');
+        showError(err instanceof Error ? err.message : tt('route.parseFailed'));
       }
     };
     reader.readAsText(file);
@@ -206,10 +238,29 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
 
     const gpsState = gpsTracker?.getState();
     if (!gpsState?.position) {
-      resultCard.showError('GPS position not available — enable location to find stops');
+      resultCard.showError(tt('gps.unavailable'));
       return;
     }
 
     searchAndDisplay();
   });
+}
+
+function fallbackUpload(key: string, params?: Record<string, string | number>): string {
+  const map: Record<string, string> = {
+    'gps.denied': 'GPS access denied — enable location to find stops',
+    'gps.unavailable': 'GPS position not available — enable location to find stops',
+    'route.unnamed': 'Unnamed route',
+    'route.points': '{count} points',
+    'route.distance': '{distance} km',
+    'route.parseFailed': 'Failed to parse GPX',
+    'route.loadFailed': 'Failed to load stops',
+  };
+  let value = map[key] ?? key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      value = value.replace(`{${k}}`, String(v));
+    }
+  }
+  return value;
 }

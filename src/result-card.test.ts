@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { initResultCard } from './result-card';
 import type { ResultCardHandle } from './result-card';
 import type { RankedStop } from './stop-ranker';
+import { createI18n } from './i18n';
 
 function makeStop(overrides: Partial<RankedStop> = {}): RankedStop {
   return {
@@ -156,5 +157,75 @@ describe('result-card', () => {
     const wrapper = container.querySelector('.result-card') as HTMLElement;
     expect(wrapper.textContent).not.toContain('First');
     expect(wrapper.textContent).toContain('Second');
+  });
+});
+
+describe('result-card with i18n', () => {
+  let container: HTMLElement;
+  let card: ResultCardHandle;
+
+  beforeEach(() => {
+    localStorage.clear();
+    container = document.createElement('div');
+  });
+
+  // Slice 16: showLoading uses translated text
+  it('showLoading uses translated text', () => {
+    const i18n = createI18n('pl');
+    card = initResultCard(container, i18n);
+    card.showLoading();
+    expect(container.textContent).toContain('Szukam przystanków...');
+  });
+
+  // Slice 17: showEmpty uses translated text
+  it('showEmpty uses translated text', () => {
+    const i18n = createI18n('pl');
+    card = initResultCard(container, i18n);
+    card.showEmpty();
+    expect(container.textContent).toContain('Nie znaleziono przystanków w pobliżu');
+  });
+
+  // Slice 18: showWaitingForGps uses translated text
+  it('showWaitingForGps uses translated text', () => {
+    const i18n = createI18n('pl');
+    card = initResultCard(container, i18n);
+    card.showWaitingForGps();
+    expect(container.textContent).toContain('Oczekiwanie na GPS...');
+  });
+
+  // Slice 19: showStop renders translated POI type
+  it('showStop renders translated POI type', () => {
+    const i18n = createI18n('pl');
+    card = initResultCard(container, i18n);
+    card.showStop(makeStop());
+    expect(container.textContent).toContain('stacja paliw');
+  });
+
+  // Slice 20: showStop renders translated badge text
+  it('showStop renders translated badge text', () => {
+    const i18n = createI18n('pl');
+    card = initResultCard(container, i18n);
+    card.showStop(makeStop());
+    expect(container.textContent).toContain('Otwarte');
+  });
+
+  // Slice 21: showStop renders translated cards label
+  it('showStop renders translated cards label', () => {
+    const i18n = createI18n('pl');
+    card = initResultCard(container, i18n);
+    card.showStop(makeStop());
+    expect(container.textContent).toContain('Karty: Tak');
+  });
+
+  // Slice 22: Switching locale and re-rendering produces Polish text
+  it('switching locale and re-rendering produces Polish text', () => {
+    const i18n = createI18n('en');
+    card = initResultCard(container, i18n);
+    card.showStop(makeStop());
+    expect(container.textContent).toContain('Cards: Yes');
+
+    i18n.setLocale('pl');
+    card.showStop(makeStop());
+    expect(container.textContent).toContain('Karty: Tak');
   });
 });

@@ -7,11 +7,12 @@
   </head>
   <body>
     <div id="app">
-      <h1>FuelSpot</h1>
-      <p class="subtitle">Find open resupply stops along your route</p>
+      <button id="lang-toggle" type="button" class="lang-toggle">PL</button>
+      <h1 data-i18n="app.title">FuelSpot</h1>
+      <p class="subtitle" data-i18n="app.subtitle">Find open resupply stops along your route</p>
 
       <label for="gpx-input" class="upload-label">
-        Upload GPX file
+        <span data-i18n="upload.label">Upload GPX file</span>
         <input type="file" id="gpx-input" accept=".gpx" />
       </label>
 
@@ -23,9 +24,9 @@
 
       <p id="error-display" hidden></p>
 
-      <button id="clear-btn" type="button" hidden>Clear route</button>
-      <button id="refresh-btn" type="button" hidden>Refresh stops</button>
-      <p id="loading-indicator" hidden>Loading stops…</p>
+      <button id="clear-btn" type="button" hidden data-i18n="upload.clear">Clear route</button>
+      <button id="refresh-btn" type="button" hidden data-i18n="upload.refresh">Refresh stops</button>
+      <p id="loading-indicator" hidden data-i18n="upload.loading">Loading stops…</p>
 
       <div id="result-card-container"></div>
 

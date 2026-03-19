@@ -3,6 +3,7 @@ import type { LeafletFactory, RouteMapHandle } from './route-map';
 import { initRouteMap } from './route-map';
 import type { ParsedRoute } from './gpx-parser';
 import type { POI } from './poi-fetcher';
+import { createI18n } from './i18n';
 
 function makeRoute(
   points: Array<{ lat: number; lng: number }>,
@@ -422,5 +423,53 @@ describe('route-map', () => {
       [[50, 20], [51, 21]],
       { padding: [50, 50] },
     );
+  });
+});
+
+describe('route-map with i18n', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  // Slice 27: placeholder uses translated text
+  it('placeholder uses translated text', () => {
+    const container = document.createElement('div');
+    const mocks = createMockFactory();
+    const i18n = createI18n('pl');
+    initRouteMap(container, mocks.factory, i18n);
+
+    const placeholder = container.querySelector('.map-placeholder') as HTMLElement;
+    expect(placeholder.textContent).toBe('Wgraj plik GPX, aby zobaczyć trasę na mapie');
+  });
+
+  // Slice 28: off-route warning uses translated text
+  it('off-route warning uses translated text', () => {
+    const container = document.createElement('div');
+    const mocks = createMockFactory();
+    const i18n = createI18n('pl');
+    const handle = initRouteMap(container, mocks.factory, i18n);
+
+    handle.showOffRouteWarning();
+    const banner = container.querySelector('.off-route-warning') as HTMLElement;
+    expect(banner.textContent).toBe('Jesteś poza trasą');
+  });
+
+  // Slice 29: POI popup uses translated type + cards
+  it('POI popup uses translated type and cards label', () => {
+    const container = document.createElement('div');
+    const mocks = createMockFactory();
+    const i18n = createI18n('pl');
+    initRouteMap(container, mocks.factory, i18n);
+
+    const handle = initRouteMap(container, mocks.factory, i18n);
+    const pois: POI[] = [
+      { id: 1, name: 'Shell', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: true },
+    ];
+    handle.showPOIs(pois);
+
+    const cm = mocks.circleMarkers[mocks.circleMarkers.length - 1];
+    const popupHtml = cm.bindPopup.mock.calls[0][0] as string;
+    expect(popupHtml).toContain('stacja paliw');
+    expect(popupHtml).toContain('Karty: Tak');
   });
 });

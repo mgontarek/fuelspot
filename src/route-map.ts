@@ -1,6 +1,7 @@
 import type { ParsedRoute } from './gpx-parser';
 import type { POI, POIType } from './poi-fetcher';
 import type * as L from 'leaflet';
+import type { I18n } from './i18n';
 
 export interface RouteMapHandle {
   showRoute(route: ParsedRoute): void;
@@ -43,14 +44,20 @@ const POI_COLORS: Record<POIType, string> = {
 const DEFAULT_CENTER: L.LatLngExpression = [0, 0];
 const DEFAULT_ZOOM = 2;
 const PLACEHOLDER_TEXT = 'Upload a GPX file to see your route on the map';
+const OFF_ROUTE_TEXT = 'You are off route';
 
 export function initRouteMap(
   container: HTMLElement,
   factory?: LeafletFactory,
+  i18n?: I18n,
 ): RouteMapHandle {
+  function tt(key: string, fallbackVal?: string): string {
+    return i18n ? i18n.t(key) : (fallbackVal ?? key);
+  }
+
   const placeholder = document.createElement('p');
   placeholder.className = 'map-placeholder';
-  placeholder.textContent = PLACEHOLDER_TEXT;
+  placeholder.textContent = tt('map.placeholder', PLACEHOLDER_TEXT);
   container.appendChild(placeholder);
 
   const mapDiv = document.createElement('div');
@@ -74,7 +81,7 @@ export function initRouteMap(
 
   const offRouteBanner = document.createElement('div');
   offRouteBanner.className = 'off-route-warning';
-  offRouteBanner.textContent = 'You are off route';
+  offRouteBanner.textContent = tt('map.offRoute', OFF_ROUTE_TEXT);
   offRouteBanner.hidden = true;
   container.appendChild(offRouteBanner);
 
@@ -197,13 +204,17 @@ export function initRouteMap(
         })
         .addTo(map);
 
-      const cardText =
-        poi.acceptsCards === true
-          ? 'Cards: Yes'
-          : poi.acceptsCards === false
-            ? 'Cards: No'
-            : 'Cards: Unknown';
-      const popupHtml = `<strong>${poi.name ?? 'Unnamed'}</strong><br>${poi.type}<br>${cardText}`;
+      const cardsValue = poi.acceptsCards === true
+        ? tt('card.cardsYes', 'Yes')
+        : poi.acceptsCards === false
+          ? tt('card.cardsNo', 'No')
+          : tt('card.cardsUnknown', 'Unknown');
+      const cardText = i18n
+        ? i18n.t('card.cardsLabel', { value: cardsValue })
+        : `Cards: ${cardsValue}`;
+      const poiName = poi.name ?? tt('card.unnamed', 'Unnamed');
+      const poiType = tt(`poi.${poi.type}`, poi.type);
+      const popupHtml = `<strong>${poiName}</strong><br>${poiType}<br>${cardText}`;
       cm.bindPopup(popupHtml);
 
       poiMarkers.push(cm);

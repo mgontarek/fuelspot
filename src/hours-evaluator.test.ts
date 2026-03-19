@@ -1,6 +1,8 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, beforeEach } from 'vitest';
 import { evaluateHours, formatCountdown, createOpeningHoursParser } from './hours-evaluator';
 import type { HoursParser } from './hours-evaluator';
+import { createI18n } from './i18n';
+import type { I18n } from './i18n';
 
 function stubParser(overrides: Partial<ReturnType<HoursParser['evaluate']>> = {}): HoursParser {
   return {
@@ -96,6 +98,89 @@ describe('formatCountdown', () => {
     const from = new Date('2026-03-16T10:00:00');
     const to = new Date('2026-03-16T10:00:30');
     expect(formatCountdown(from, to)).toBe('< 1m');
+  });
+});
+
+describe('evaluateHours with i18n', () => {
+  const now = new Date('2026-03-16T10:00:00'); // Monday
+  let i18n: I18n;
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  // Slice 11: null opening_hours returns localized 'Hours unknown'
+  test('null opening_hours with i18n returns localized unknown', () => {
+    i18n = createI18n('pl');
+    const result = evaluateHours(null, now, stubParser(), i18n);
+    expect(result.displayString).toBe('Godziny nieznane');
+  });
+
+  // Slice 12: open result uses i18n.t('hours.openUntil')
+  test('open result uses localized display string', () => {
+    i18n = createI18n('pl');
+    const closesAt = new Date('2026-03-16T22:00:00');
+    const parser = stubParser({ isOpen: true, nextChange: closesAt });
+    const result = evaluateHours('Mo-Su 06:00-22:00', now, parser, i18n);
+    expect(result.displayString).toContain('Otwarte do');
+  });
+
+  // Slice 13: closed same-day uses locale-aware time
+  test('closed same-day uses locale-aware opensAt', () => {
+    i18n = createI18n('pl');
+    const morning = new Date('2026-03-16T05:00:00');
+    const opensAt = new Date('2026-03-16T14:00:00');
+    const parser = stubParser({ isOpen: false, nextChange: opensAt });
+    const result = evaluateHours('Mo-Su 14:00-22:00', morning, parser, i18n);
+    expect(result.displayString).toContain('Otwiera o');
+  });
+
+  // Slice 14: closed different-day uses Polish day name
+  test('closed different-day uses Polish locale for day name', () => {
+    i18n = createI18n('pl');
+    const late = new Date('2026-03-16T23:00:00');
+    const opensAt = new Date('2026-03-17T06:00:00');
+    const parser = stubParser({ isOpen: false, nextChange: opensAt });
+    const result = evaluateHours('Mo-Su 06:00-22:00', late, parser, i18n);
+    expect(result.displayString).toContain('Otwiera');
+  });
+
+  // Slice 15: without i18n, backward compatible
+  test('without i18n param, existing English behavior unchanged', () => {
+    const result = evaluateHours(null, now, stubParser());
+    expect(result.displayString).toBe('Hours unknown');
+
+    const closesAt = new Date('2026-03-16T22:00:00');
+    const parser = stubParser({ isOpen: true, nextChange: closesAt });
+    const openResult = evaluateHours('Mo-Su 06:00-22:00', now, parser);
+    expect(openResult.displayString).toBe('Open until 22:00');
+  });
+});
+
+describe('formatCountdown with i18n', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  test('formats Polish countdown', () => {
+    const i18n = createI18n('pl');
+    const from = new Date('2026-03-16T10:00:00');
+    const to = new Date('2026-03-16T12:15:00');
+    expect(formatCountdown(from, to, i18n)).toBe('2 godz. 15 min');
+  });
+
+  test('formats Polish minutes only', () => {
+    const i18n = createI18n('pl');
+    const from = new Date('2026-03-16T10:00:00');
+    const to = new Date('2026-03-16T10:45:00');
+    expect(formatCountdown(from, to, i18n)).toBe('45 min');
+  });
+
+  test('formats Polish less than minute', () => {
+    const i18n = createI18n('pl');
+    const from = new Date('2026-03-16T10:00:00');
+    const to = new Date('2026-03-16T10:00:30');
+    expect(formatCountdown(from, to, i18n)).toBe('< 1 min');
   });
 });
 

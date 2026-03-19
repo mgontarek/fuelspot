@@ -6,6 +6,7 @@ import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import { setDefaultFactory } from './route-map';
 import { initUpload } from './upload';
+import { createI18n } from './i18n';
 
 // Fix Leaflet default marker icons broken by Vite bundling
 L.Icon.Default.mergeOptions({
@@ -22,4 +23,19 @@ setDefaultFactory({
   circleMarker: (latlng, options) => L.circleMarker(latlng, options),
 });
 
-initUpload();
+const i18n = createI18n();
+
+// Wire up language toggle
+const langToggle = document.getElementById('lang-toggle');
+if (langToggle) {
+  langToggle.textContent = i18n.t('lang.toggle');
+  langToggle.addEventListener('click', () => {
+    i18n.setLocale(i18n.locale() === 'en' ? 'pl' : 'en');
+  });
+  i18n.onChange(() => {
+    langToggle.textContent = i18n.t('lang.toggle');
+    document.documentElement.lang = i18n.locale() === 'pl' ? 'pl' : 'en';
+  });
+}
+
+initUpload(undefined, undefined, i18n);
