@@ -1,4 +1,5 @@
 import type { RankedStop } from './stop-ranker';
+import type { I18n } from './i18n';
 
 export interface ResultCardHandle {
   showStop(stop: RankedStop): void;
@@ -9,11 +10,15 @@ export interface ResultCardHandle {
   clear(): void;
 }
 
-export function initResultCard(container: HTMLElement): ResultCardHandle {
+export function initResultCard(container: HTMLElement, i18n?: I18n): ResultCardHandle {
   const wrapper = document.createElement('div');
   wrapper.className = 'result-card';
   wrapper.hidden = true;
   container.appendChild(wrapper);
+
+  function tt(key: string, params?: Record<string, string | number>): string {
+    return i18n ? i18n.t(key, params) : fallback(key, params);
+  }
 
   function setContent(html: string): void {
     wrapper.innerHTML = html;
@@ -21,36 +26,34 @@ export function initResultCard(container: HTMLElement): ResultCardHandle {
   }
 
   function showStop(stop: RankedStop): void {
-    const name = stop.poi.name ?? 'Unnamed';
-    const type = stop.poi.type;
+    const name = stop.poi.name ?? tt('card.unnamed');
+    const type = tt(`poi.${stop.poi.type}`);
 
-    const distance =
-      stop.distanceAlongRoute !== null
-        ? `${(stop.distanceAlongRoute / 1000).toFixed(1)} km`
-        : `${(stop.straightLineDistance / 1000).toFixed(1)} km (straight line)`;
+    const distVal = stop.distanceAlongRoute !== null
+      ? (stop.distanceAlongRoute / 1000).toFixed(1)
+      : (stop.straightLineDistance / 1000).toFixed(1);
+    const distance = stop.distanceAlongRoute !== null
+      ? tt('card.distanceRoute', { distance: distVal })
+      : tt('card.distanceStraight', { distance: distVal });
 
     const statusClass = `status-${stop.hours.status}`;
-    const statusBadge =
-      stop.hours.status === 'open'
-        ? '<span class="badge badge-open">Open</span>'
-        : stop.hours.status === 'closed'
-          ? '<span class="badge badge-closed">Closed</span>'
-          : '<span class="badge badge-unknown">Unknown</span>';
+    const badgeText = tt(`badge.${stop.hours.status}`);
+    const statusBadge = `<span class="badge badge-${stop.hours.status}">${badgeText}</span>`;
 
     const hoursLine =
       stop.hours.status === 'unknown'
-        ? 'Hours unknown'
+        ? tt('card.hoursUnknown')
         : stop.hours.displayString;
 
     const countdownLine =
-      stop.countdown ? `<p class="result-countdown">opens in ${stop.countdown}</p>` : '';
+      stop.countdown ? `<p class="result-countdown">${tt('card.opensIn', { countdown: stop.countdown })}</p>` : '';
 
-    const cards =
+    const cardsValue =
       stop.poi.acceptsCards === true
-        ? 'Yes'
+        ? tt('card.cardsYes')
         : stop.poi.acceptsCards === false
-          ? 'No'
-          : 'Unknown';
+          ? tt('card.cardsNo')
+          : tt('card.cardsUnknown');
 
     setContent(`
       <div class="result-stop ${statusClass}">
@@ -62,13 +65,13 @@ export function initResultCard(container: HTMLElement): ResultCardHandle {
         <p class="result-distance">${distance}</p>
         <p class="result-hours">${hoursLine}</p>
         ${countdownLine}
-        <p class="result-cards">Cards: ${cards}</p>
+        <p class="result-cards">${tt('card.cardsLabel', { value: cardsValue })}</p>
       </div>
     `);
   }
 
   function showLoading(): void {
-    setContent('<p class="result-loading">Searching for stops...</p>');
+    setContent(`<p class="result-loading">${tt('card.searching')}</p>`);
   }
 
   function showError(message: string): void {
@@ -76,11 +79,11 @@ export function initResultCard(container: HTMLElement): ResultCardHandle {
   }
 
   function showEmpty(): void {
-    setContent('<p class="result-empty">No stops found nearby</p>');
+    setContent(`<p class="result-empty">${tt('card.empty')}</p>`);
   }
 
   function showWaitingForGps(): void {
-    setContent('<p class="result-waiting">Waiting for GPS...</p>');
+    setContent(`<p class="result-waiting">${tt('gps.waiting')}</p>`);
   }
 
   function clear(): void {
@@ -89,4 +92,38 @@ export function initResultCard(container: HTMLElement): ResultCardHandle {
   }
 
   return { showStop, showLoading, showError, showEmpty, showWaitingForGps, clear };
+}
+
+// Fallback English strings when no i18n is provided (backward compat)
+function fallback(key: string, params?: Record<string, string | number>): string {
+  const map: Record<string, string> = {
+    'card.searching': 'Searching for stops...',
+    'card.empty': 'No stops found nearby',
+    'card.unnamed': 'Unnamed',
+    'card.hoursUnknown': 'Hours unknown',
+    'card.opensIn': 'opens in {countdown}',
+    'card.cardsYes': 'Yes',
+    'card.cardsNo': 'No',
+    'card.cardsUnknown': 'Unknown',
+    'card.cardsLabel': 'Cards: {value}',
+    'card.distanceRoute': '{distance} km',
+    'card.distanceStraight': '{distance} km (straight line)',
+    'badge.open': 'Open',
+    'badge.closed': 'Closed',
+    'badge.unknown': 'Unknown',
+    'gps.waiting': 'Waiting for GPS...',
+    'poi.fuel': 'fuel',
+    'poi.convenience': 'convenience',
+    'poi.supermarket': 'supermarket',
+    'poi.bakery': 'bakery',
+    'poi.restaurant': 'restaurant',
+    'poi.cafe': 'cafe',
+  };
+  let value = map[key] ?? key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      value = value.replace(`{${k}}`, String(v));
+    }
+  }
+  return value;
 }

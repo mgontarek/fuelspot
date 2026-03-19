@@ -25,15 +25,16 @@ FuelSpot is a static single-page app (no backend) for ultra-cyclists to find ope
 
 - **`gpx-parser.ts`** — Pure function `parseGPX(gpxString) → ParsedRoute`. Handles namespace-aware XML parsing, trackpoint/routepoint extraction, haversine distance computation.
 - **`geo.ts`** — `haversine(a, b)` distance function shared across modules.
-- **`upload.ts`** — DOM layer. `initUpload()` wires up file input, persists GPX to localStorage (`fuelspot-gpx`), displays route stats. Contains `searchAndDisplay()` pipeline that fetches POIs, ranks stops, and displays the #1 result. Auto-searches on first GPS fix after route load.
-- **`result-card.ts`** — `initResultCard(container) → ResultCardHandle` renders the top-ranked stop with status badge, distance, hours, and card payment info. Handles loading, error, empty, and waiting-for-GPS states.
+- **`i18n.ts`** — `createI18n(initialLocale?) → I18n` provides EN/PL internationalization. Flat dot-namespaced keys with `{param}` substitution. Persists to `localStorage('fuelspot-lang')`. `onChange(cb)` for reactive re-rendering on locale switch.
+- **`upload.ts`** — DOM layer. `initUpload(geo?, client?, i18n?)` wires up file input, persists GPX to localStorage (`fuelspot-gpx`), displays route stats. Contains `searchAndDisplay()` pipeline that fetches POIs, ranks stops, and displays the #1 result. Auto-searches on first GPS fix after route load. `applyStaticTranslations(i18n)` updates `[data-i18n]` elements.
+- **`result-card.ts`** — `initResultCard(container, i18n?) → ResultCardHandle` renders the top-ranked stop with status badge, distance, hours, and card payment info. Handles loading, error, empty, and waiting-for-GPS states.
 - **`route-map.ts`** — Leaflet map display with route visualization, POI pins, rider position, and highlighted #1 stop.
 - **`gps-tracker.ts`** — GPS position tracking.
 - **`route-matcher.ts`** — `matchPosition(route, position)` projects a lat/lng onto the route, returning cumulative distance and on/off-route status.
 - **`poi-fetcher.ts`** — Overpass API client with retry, cache, and POI parsing. Exports `POI` type.
-- **`hours-evaluator.ts`** — `evaluateHours(openingHours, at, parser)` evaluates OSM opening_hours strings via dependency-injected parser. `createOpeningHoursParser()` wraps the `opening_hours` library. `formatCountdown(from, to)` for human-readable time deltas.
+- **`hours-evaluator.ts`** — `evaluateHours(openingHours, at, parser, i18n?)` evaluates OSM opening_hours strings via dependency-injected parser. `createOpeningHoursParser()` wraps the `opening_hours` library. `formatCountdown(from, to, i18n?)` for human-readable time deltas. Optional `i18n` param enables locale-aware time/day formatting.
 - **`stop-ranker.ts`** — `rankStops(params, deps)` ranks POIs by open/closed/unknown status and distance. On-route mode filters forward-only and sorts by route distance; off-route mode sorts by straight-line distance.
-- **`main.ts`** — Entry point.
+- **`main.ts`** — Entry point. Creates `I18n` instance, wires up `#lang-toggle` button, passes i18n to `initUpload()`.
 
 ## Key Decisions
 

@@ -16,6 +16,28 @@ body {
   margin: 0 auto;
   padding: 2rem 1rem;
   text-align: center;
+  position: relative;
+}
+
+.lang-toggle {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.25rem 0.75rem;
+  background: none;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lang-toggle:active {
+  background: #f3f4f6;
 }
 
 h1 {

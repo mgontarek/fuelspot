@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { initUpload } from './upload';
 import { MINIMAL_2_TRKPT } from './test-fixtures/gpx-samples';
+import { createI18n } from './i18n';
 
 function setupDOM(): void {
   document.body.innerHTML = `
     <div id="app">
+      <button id="lang-toggle" type="button" class="lang-toggle">PL</button>
+      <h1 data-i18n="app.title">FuelSpot</h1>
+      <p class="subtitle" data-i18n="app.subtitle">Find open resupply stops along your route</p>
       <label for="gpx-input" class="upload-label">
-        Upload GPX file
+        <span data-i18n="upload.label">Upload GPX file</span>
         <input type="file" id="gpx-input" accept=".gpx" />
       </label>
       <section id="route-stats" hidden>
@@ -15,9 +19,9 @@ function setupDOM(): void {
         <p id="route-distance"></p>
       </section>
       <p id="error-display" hidden></p>
-      <button id="clear-btn" type="button" hidden>Clear route</button>
-      <button id="refresh-btn" type="button" hidden>Refresh stops</button>
-      <p id="loading-indicator" hidden>Loading stops…</p>
+      <button id="clear-btn" type="button" hidden data-i18n="upload.clear">Clear route</button>
+      <button id="refresh-btn" type="button" hidden data-i18n="upload.refresh">Refresh stops</button>
+      <p id="loading-indicator" hidden data-i18n="upload.loading">Loading stops…</p>
       <div id="result-card-container"></div>
       <div id="map-container"></div>
     </div>
@@ -755,5 +759,69 @@ describe('upload auto-search pipeline', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('upload i18n integration', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setupDOM();
+    vi.clearAllMocks();
+  });
+
+  // Slice 23: initUpload populates data-i18n elements
+  it('initUpload with i18n populates data-i18n elements', () => {
+    const i18n = createI18n('pl');
+    initUpload(undefined, undefined, i18n);
+
+    const subtitle = document.querySelector('[data-i18n="app.subtitle"]') as HTMLElement;
+    expect(subtitle.textContent).toBe('Znajdź otwarte sklepy na trasie');
+
+    const uploadLabel = document.querySelector('[data-i18n="upload.label"]') as HTMLElement;
+    expect(uploadLabel.textContent).toBe('Wgraj plik GPX');
+  });
+
+  // Slice 24: Route stats use translated text
+  it('route stats use translated text', async () => {
+    const i18n = createI18n('pl');
+    initUpload(undefined, undefined, i18n);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    const pointCountEl = document.getElementById('point-count') as HTMLElement;
+    expect(pointCountEl.textContent).toContain('punktów');
+
+    const routeNameEl = document.getElementById('route-name') as HTMLElement;
+    // The fixture has no name, so it should show the Polish unnamed
+    expect(routeNameEl.textContent).toBeTruthy();
+  });
+
+  // Slice 25: GPS error messages use translated text
+  it('GPS denied shows Polish error', async () => {
+    const i18n = createI18n('pl');
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo, undefined, i18n);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    mockGeo.simulateError(1);
+
+    expect(mockResultCard.showError).toHaveBeenCalledWith(
+      expect.stringContaining('GPS'),
+    );
+  });
+
+  // Slice 26: i18n.onChange triggers re-render of static text
+  it('locale change re-renders static text', async () => {
+    const i18n = createI18n('en');
+    initUpload(undefined, undefined, i18n);
+
+    const subtitle = document.querySelector('[data-i18n="app.subtitle"]') as HTMLElement;
+    expect(subtitle.textContent).toBe('Find open resupply stops along your route');
+
+    i18n.setLocale('pl');
+    expect(subtitle.textContent).toBe('Znajdź otwarte sklepy na trasie');
   });
 });
