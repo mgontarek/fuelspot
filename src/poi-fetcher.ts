@@ -131,6 +131,11 @@ export interface OverpassClientOptions {
 
 const defaultDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+const RETRYABLE_STATUSES = [429, 502, 503, 504];
+function isRetryableStatus(status: number): boolean {
+  return RETRYABLE_STATUSES.includes(status);
+}
+
 export function createOverpassClient(options?: OverpassClientOptions): OverpassClient {
   const maxRetries = options?.maxRetries ?? 3;
   const baseDelay = options?.baseDelay ?? 1000;
@@ -146,9 +151,12 @@ export function createOverpassClient(options?: OverpassClientOptions): OverpassC
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         });
         if (res.ok) return res.json();
-        if (res.status !== 429 || retries >= maxRetries) {
+        if (!isRetryableStatus(res.status) || retries >= maxRetries) {
           if (res.status === 429) {
             throw new Error('Overpass API is busy — please try again in a minute');
+          }
+          if (res.status >= 502 && res.status <= 504) {
+            throw new Error('Server timed out — please try again');
           }
           throw new Error(`Overpass API error: ${res.status}`);
         }
