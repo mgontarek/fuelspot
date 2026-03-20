@@ -11,6 +11,7 @@ import { evaluateHours, createOpeningHoursParser } from './hours-evaluator';
 import { matchPosition } from './route-matcher';
 import { haversine } from './geo';
 import type { I18n } from './i18n';
+import { createSearchPipeline } from './search-pipeline';
 
 const STORAGE_KEY = 'fuelspot-gpx';
 
@@ -48,12 +49,18 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
   const resultCard = initResultCard(resultCardContainer, i18n);
   const client = overpassClient ?? createOverpassClient();
   const cachedFetcher = createCachedFetcher(client);
-  const hoursParser = createOpeningHoursParser();
+  const pipeline = createSearchPipeline({
+    fetchPOIs: (points) => cachedFetcher.fetch(points),
+    rankStops,
+    evaluateHours,
+    matchPosition,
+    haversine,
+    createOpeningHoursParser,
+  });
 
   let gpsTracker: GpsTrackerHandle | null = null;
   let currentRoute: ParsedRoute | null = null;
   let hasAutoSearched = false;
-  let pipelineInFlight = false;
 
   const geoProvider = geo ?? (typeof navigator !== 'undefined' && navigator.geolocation
     ? navigator.geolocation
@@ -87,7 +94,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
   }
 
   async function searchAndDisplay(): Promise<void> {
-    if (!currentRoute || pipelineInFlight) return;
+    if (!currentRoute || pipeline.isRunning) return;
 
     const gpsState = gpsTracker?.getState();
     if (!gpsState?.position) {
@@ -95,50 +102,34 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
       return;
     }
 
-    pipelineInFlight = true;
     refreshBtn.disabled = true;
     resultCard.showLoading();
     errorSection.hidden = true;
 
-    try {
-      const pois = await cachedFetcher.fetch(currentRoute.points);
+    const result = await pipeline.run(
+      currentRoute,
+      () => gpsTracker!.getState(),
+      i18n,
+    );
 
-      const gpsStateNow = gpsTracker!.getState();
-      const position = gpsStateNow.position ?? gpsState.position;
-      const match = gpsStateNow.match ?? matchPosition(currentRoute.points, position);
+    refreshBtn.disabled = false;
 
-      const ranked = rankStops(
-        {
-          pois,
-          route: currentRoute.points,
-          riderMatch: match,
-          riderPosition: position,
-          at: new Date(),
-        },
-        {
-          evaluateHours: (oh, at) => evaluateHours(oh, at, hoursParser, i18n),
-          matchPosition,
-          haversine,
-        },
-      );
-
-      mapHandle.showPOIs(pois);
-
-      if (ranked.length === 0) {
-        resultCard.showEmpty();
-        mapHandle.clearHighlight();
-      } else {
-        const top = ranked[0];
-        resultCard.showStop(top);
-        mapHandle.highlightStop(top.poi);
-        mapHandle.zoomToFit([position, { lat: top.poi.lat, lng: top.poi.lng }]);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : tt('route.loadFailed');
-      resultCard.showError(message);
-    } finally {
-      refreshBtn.disabled = false;
-      pipelineInFlight = false;
+    switch (result.status) {
+      case 'ok':
+        mapHandle.showPOIs(result.pois);
+        if (result.ranked.length === 0) {
+          resultCard.showEmpty();
+          mapHandle.clearHighlight();
+        } else {
+          const top = result.ranked[0];
+          resultCard.showStop(top);
+          mapHandle.highlightStop(top.poi);
+          mapHandle.zoomToFit([result.position, { lat: top.poi.lat, lng: top.poi.lng }]);
+        }
+        break;
+      case 'error':
+        resultCard.showError(result.message);
+        break;
     }
   }
 
