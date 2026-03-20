@@ -32,7 +32,6 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
   const warningSection = document.getElementById('warning-display') as HTMLElement;
   const errorSection = document.getElementById('error-display') as HTMLElement;
   const routeName = document.getElementById('route-name') as HTMLElement;
-  const pointCount = document.getElementById('point-count') as HTMLElement;
   const routeDistance = document.getElementById('route-distance') as HTMLElement;
   const mapContainer = document.getElementById('map-container') as HTMLElement;
   const resultCardContainer = document.getElementById('result-card-container') as HTMLElement;
@@ -147,7 +146,6 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     currentRoute = route;
     hasAutoSearched = false;
     routeName.textContent = route.name ?? tt('route.unnamed');
-    pointCount.textContent = tt('route.points', { count: route.points.length });
     routeDistance.textContent = tt('route.distance', { distance: (route.totalDistance / 1000).toFixed(1) });
     statsSection.hidden = false;
     errorSection.hidden = true;
@@ -206,7 +204,6 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
       // Re-render route stats if a route is loaded
       if (currentRoute) {
         routeName.textContent = currentRoute.name ?? tt('route.unnamed');
-        pointCount.textContent = tt('route.points', { count: currentRoute.points.length });
         routeDistance.textContent = tt('route.distance', { distance: (currentRoute.totalDistance / 1000).toFixed(1) });
       }
     });
@@ -264,7 +261,6 @@ function fallbackUpload(key: string, params?: Record<string, string | number>): 
     'gps.denied': 'GPS access denied — enable location to find stops',
     'gps.unavailable': 'GPS position not available — enable location to find stops',
     'route.unnamed': 'Unnamed route',
-    'route.points': '{count} points',
     'route.distance': '{distance} km',
     'route.parseFailed': 'Failed to parse GPX',
     'route.loadFailed': 'Failed to load stops',
