@@ -14,9 +14,10 @@ function setupDOM(): void {
         <input type="file" id="gpx-input" accept=".gpx" />
       </label>
       <section id="route-stats" hidden>
-        <h2 id="route-name"></h2>
-        <p id="point-count"></p>
-        <p id="route-distance"></p>
+        <p class="route-stats-line">
+          <span id="route-name"></span>
+          <span id="route-distance"></span>
+        </p>
       </section>
       <p id="warning-display" hidden></p>
       <p id="error-display" hidden></p>
@@ -790,20 +791,62 @@ describe('upload i18n integration', () => {
     expect(uploadLabel.textContent).toBe('Wgraj plik GPX');
   });
 
-  // Slice 24: Route stats use translated text
-  it('route stats use translated text', async () => {
+  // Route stats show name + distance on single line, no point count
+  it('route stats show name and distance, no point count', async () => {
+    const i18n = createI18n('en');
+    initUpload(undefined, undefined, i18n);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    // No point-count element exists
+    expect(document.getElementById('point-count')).toBeNull();
+
+    // Name and distance are in separate spans
+    const routeNameEl = document.getElementById('route-name') as HTMLElement;
+    expect(routeNameEl.tagName).toBe('SPAN');
+    expect(routeNameEl.textContent).toBeTruthy();
+
+    const routeDistanceEl = document.getElementById('route-distance') as HTMLElement;
+    expect(routeDistanceEl.tagName).toBe('SPAN');
+    expect(routeDistanceEl.textContent).toContain('km');
+  });
+
+  // Polish locale renders correctly in single-line format
+  it('route stats use translated text in Polish', async () => {
     const i18n = createI18n('pl');
     initUpload(undefined, undefined, i18n);
 
     simulateFileUpload(MINIMAL_2_TRKPT);
     await flushFileReader();
 
-    const pointCountEl = document.getElementById('point-count') as HTMLElement;
-    expect(pointCountEl.textContent).toContain('punktów');
+    const routeNameEl = document.getElementById('route-name') as HTMLElement;
+    // The fixture has a name, so it should show that name
+    expect(routeNameEl.textContent).toBe('Test Route');
+
+    const routeDistanceEl = document.getElementById('route-distance') as HTMLElement;
+    expect(routeDistanceEl.textContent).toContain('km');
+  });
+
+  // Locale change re-renders single-line format
+  it('locale change re-renders route stats', async () => {
+    const i18n = createI18n('en');
+    initUpload(undefined, undefined, i18n);
+
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
 
     const routeNameEl = document.getElementById('route-name') as HTMLElement;
-    // The fixture has no name, so it should show the Polish unnamed
-    expect(routeNameEl.textContent).toBeTruthy();
+    expect(routeNameEl.textContent).toBe('Test Route');
+
+    // Distance re-renders with new locale
+    const routeDistanceEl = document.getElementById('route-distance') as HTMLElement;
+
+    i18n.setLocale('pl');
+    // Name stays the same (it's the GPX name, not translated)
+    expect(routeNameEl.textContent).toBe('Test Route');
+    // Distance text should still contain km (same key value in both locales)
+    expect(routeDistanceEl.textContent).toContain('km');
   });
 
   // Slice 25: GPS error messages use translated text

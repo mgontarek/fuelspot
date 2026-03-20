@@ -22,9 +22,9 @@ describe('i18n core', () => {
   });
 
   // Slice 3: Param substitution
-  test("t('route.points', { count: '42' }) returns '42 points'", () => {
+  test("t('route.distance', { distance: '42.0' }) returns '42.0 km'", () => {
     const i18n = createI18n('en');
-    expect(i18n.t('route.points', { count: '42' })).toBe('42 points');
+    expect(i18n.t('route.distance', { distance: '42.0' })).toBe('42.0 km');
   });
 
   // Slice 4: PL dictionary
@@ -86,7 +86,7 @@ describe('i18n core', () => {
     const knownKeys = [
       'app.title', 'app.subtitle',
       'upload.label', 'upload.clear', 'upload.refresh',
-      'route.unnamed', 'route.points', 'route.distance', 'route.parseFailed', 'route.loadFailed',
+      'route.unnamed', 'route.distance', 'route.parseFailed', 'route.loadFailed',
       'gps.denied', 'gps.unavailable', 'gps.waiting',
       'card.searching', 'card.empty', 'card.unnamed', 'card.hoursUnknown', 'card.opensIn',
       'card.cardsYes', 'card.cardsNo', 'card.cardsUnknown', 'card.cardsLabel',
@@ -120,7 +120,7 @@ describe('i18n core', () => {
   // Slice: numeric param substitution
   test('t() handles numeric params', () => {
     const i18n = createI18n('en');
-    expect(i18n.t('route.points', { count: 42 })).toBe('42 points');
+    expect(i18n.t('route.distance', { distance: 42 })).toBe('42 km');
   });
 });
 
