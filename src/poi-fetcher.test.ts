@@ -262,7 +262,37 @@ describe('createOverpassClient retry', () => {
     vi.unstubAllGlobals();
   });
 
-  it('rejects immediately on non-429 errors without retry', async () => {
+  it('retries on 504 then resolves with data', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 504 })
+      .mockResolvedValueOnce({ ok: false, status: 504 })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(validResponse) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = createOverpassClient({ delayFn: noDelay });
+    const result = await client.query('test');
+
+    expect(result).toEqual(validResponse);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects with friendly message after 5xx retries exhausted', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 504 });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = createOverpassClient({ maxRetries: 3, delayFn: noDelay });
+
+    await expect(client.query('test')).rejects.toThrow(
+      'Server timed out — please try again',
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(4); // 1 initial + 3 retries
+
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects immediately on non-retryable errors without retry', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
     vi.stubGlobal('fetch', mockFetch);
 
