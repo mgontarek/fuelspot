@@ -151,4 +151,28 @@ describe('gps-tracker', () => {
     expect(state.match).toBeNull();
     expect(state.error).toBeNull();
   });
+
+  // #38: GPS tracker optional route support
+  it('emits position with null match when started without route', () => {
+    handle.start();
+    mockGeo.simulatePosition(50, 20.01);
+
+    expect(onChange).toHaveBeenCalledOnce();
+    const state: GpsState = onChange.mock.calls[0][0];
+    expect(state.position).toEqual({ lat: 50, lng: 20.01 });
+    expect(state.match).toBeNull();
+    expect(state.error).toBeNull();
+  });
+
+  it('matches route after restarting with route points', () => {
+    handle.start();
+    mockGeo.simulatePosition(50, 20.01);
+
+    handle.start(straightRoute());
+    mockGeo.simulatePosition(50, 20.02);
+
+    const state: GpsState = onChange.mock.calls[1][0];
+    expect(state.match).not.toBeNull();
+    expect(state.match!.isOnRoute).toBe(true);
+  });
 });
