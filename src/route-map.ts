@@ -5,6 +5,7 @@ import type { I18n } from './i18n';
 import { formatDistance } from './geo';
 
 export interface RouteMapHandle {
+  activate(): void;
   showRoute(route: ParsedRoute): void;
   clear(): void;
   destroy(): void;
@@ -93,6 +94,14 @@ export function initRouteMap(
       m.remove();
     }
     currentMarkers = [];
+  }
+
+  function activate(): void {
+    placeholder.hidden = true;
+    mapDiv.hidden = false;
+    requestAnimationFrame(() => {
+      map.invalidateSize();
+    });
   }
 
   function showRoute(route: ParsedRoute): void {
@@ -256,6 +265,7 @@ export function initRouteMap(
   mapDiv.hidden = true;
 
   return {
+    activate,
     showRoute,
     clear,
     destroy,

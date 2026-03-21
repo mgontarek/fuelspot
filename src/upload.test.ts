@@ -51,6 +51,7 @@ async function flushFileReader(): Promise<void> {
 
 // Mock route-map module
 vi.mock('./route-map', () => {
+  const activate = vi.fn();
   const showRoute = vi.fn();
   const clear = vi.fn();
   const destroy = vi.fn();
@@ -65,6 +66,7 @@ vi.mock('./route-map', () => {
   const zoomToFit = vi.fn();
   return {
     initRouteMap: vi.fn(() => ({
+      activate,
       showRoute,
       clear,
       destroy,
@@ -85,6 +87,7 @@ vi.mock('./route-map', () => {
 // Mock result-card module
 const mockResultCard = {
   showStop: vi.fn(),
+  showStops: vi.fn(),
   showLoading: vi.fn(),
   showError: vi.fn(),
   showEmpty: vi.fn(),
@@ -101,16 +104,22 @@ vi.mock('./result-card', () => {
 const mockFetch = vi.fn().mockResolvedValue([
   { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
 ]);
+const mockClientQuery = vi.fn().mockResolvedValue('mock-response');
+const mockParseOverpass = vi.fn().mockReturnValue([
+  { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+]);
 vi.mock('./poi-fetcher', () => {
   return {
     fetchPOIs: vi.fn().mockResolvedValue([
       { id: 1, name: 'Test POI', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
     ]),
-    createOverpassClient: vi.fn(() => ({ query: vi.fn() })),
+    createOverpassClient: vi.fn(() => ({ query: mockClientQuery })),
     createCachedFetcher: vi.fn(() => ({
       fetch: mockFetch,
       clear: vi.fn(),
     })),
+    buildProximityQuery: vi.fn().mockReturnValue('mock-query'),
+    parseOverpassResponse: (...args: unknown[]) => mockParseOverpass(...args),
   };
 });
 
@@ -259,6 +268,9 @@ describe('upload GPS integration', () => {
   it('starts GPS tracker when route is shown', async () => {
     const mockGeo = createMockGeo();
     initUpload(mockGeo.geo);
+
+    // GPS tracker starts once for proximity mode on init, then restarts for route
+    mockGeo.geo.watchPosition.mockClear();
 
     simulateFileUpload(MINIMAL_2_TRKPT);
     await flushFileReader();
@@ -958,5 +970,128 @@ describe('upload localStorage quota handling', () => {
 
     const warning = document.getElementById('warning-display') as HTMLElement;
     expect(warning.textContent).toContain('za duży');
+  });
+});
+
+describe('upload proximity mode', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setupDOM();
+    vi.clearAllMocks();
+    mockClientQuery.mockResolvedValue('mock-response');
+    mockParseOverpass.mockReturnValue([
+      { id: 1, name: 'Test POI', type: 'fuel', lat: 50.01, lng: 20.01, openingHours: null, acceptsCards: null },
+    ]);
+  });
+
+  // Slice 6: No stored GPX + geo → activates map and starts GPS
+  it('activates map and starts GPS when no stored route', async () => {
+    const { initRouteMap } = await import('./route-map');
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+    const handle = vi.mocked(initRouteMap).mock.results[0].value;
+
+    expect(handle.activate).toHaveBeenCalledOnce();
+    expect(mockGeo.geo.watchPosition).toHaveBeenCalledOnce();
+  });
+
+  // Slice 7: GPS fix in proximity mode → shows POIs + stops + zoom
+  it('GPS fix triggers proximity search and shows results on map', async () => {
+    const { initRouteMap } = await import('./route-map');
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+    const handle = vi.mocked(initRouteMap).mock.results[0].value;
+
+    mockGeo.simulatePosition(50, 20);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(handle.showPOIs).toHaveBeenCalled();
+    expect(mockResultCard.showStops).toHaveBeenCalled();
+    expect(handle.highlightStop).toHaveBeenCalled();
+    expect(handle.zoomToFit).toHaveBeenCalled();
+  });
+
+  // Slice 8: Proximity search with no results → shows empty
+  it('proximity search with no stops shows empty', async () => {
+    const { initRouteMap } = await import('./route-map');
+    mockParseOverpass.mockReturnValue([]);
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+    const handle = vi.mocked(initRouteMap).mock.results[0].value;
+
+    mockGeo.simulatePosition(50, 20);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockResultCard.showEmpty).toHaveBeenCalled();
+    expect(handle.clearHighlight).toHaveBeenCalled();
+  });
+
+  // Slice 9: Proximity search error → shows error
+  it('proximity search error shows error on card', async () => {
+    mockClientQuery.mockRejectedValueOnce(new Error('Network error'));
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    mockGeo.simulatePosition(50, 20);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockResultCard.showError).toHaveBeenCalledWith(
+      expect.stringContaining('Network error'),
+    );
+  });
+
+  // Slice 10: GPS denied in proximity mode → shows error
+  it('GPS denied in proximity mode shows error', async () => {
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    mockGeo.simulateError(1);
+
+    expect(mockResultCard.showError).toHaveBeenCalledWith(
+      expect.stringContaining('GPS'),
+    );
+  });
+
+  // Slice 11: Clear route → returns to proximity mode
+  it('clearing route returns to proximity mode', async () => {
+    const { initRouteMap } = await import('./route-map');
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+    const handle = vi.mocked(initRouteMap).mock.results[0].value;
+
+    // Upload a route first
+    simulateFileUpload(MINIMAL_2_TRKPT);
+    await flushFileReader();
+
+    vi.clearAllMocks();
+
+    // Clear route
+    const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
+    clearBtn.click();
+
+    expect(handle.activate).toHaveBeenCalledOnce();
+    expect(mockGeo.geo.watchPosition).toHaveBeenCalled();
+  });
+
+  // Slice 12: Refresh button triggers proximity search
+  it('refresh button triggers proximity search when no route', async () => {
+    const mockGeo = createMockGeo();
+    initUpload(mockGeo.geo);
+
+    mockGeo.simulatePosition(50, 20);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Reset after auto-search
+    vi.clearAllMocks();
+    mockClientQuery.mockResolvedValue('mock-response');
+    mockParseOverpass.mockReturnValue([
+      { id: 1, name: 'Test POI', type: 'fuel', lat: 50.01, lng: 20.01, openingHours: null, acceptsCards: null },
+    ]);
+
+    const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
+    refreshBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockResultCard.showStops).toHaveBeenCalled();
   });
 });
