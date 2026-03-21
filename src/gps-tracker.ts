@@ -18,7 +18,7 @@ export interface GpsState {
 }
 
 export interface GpsTrackerHandle {
-  start(route: RoutePoint[]): void;
+  start(route?: RoutePoint[]): void;
   stop(): void;
   getState(): GpsState;
 }
@@ -34,13 +34,12 @@ export function initGpsTracker(
 
   function handlePosition(pos: GeolocationPosition): void {
     const position = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    const match = matchPosition(route, position, lastKnownIndex);
-
-    if (
-      lastKnownIndex === undefined ||
-      match.nearestPointIndex >= lastKnownIndex
-    ) {
-      lastKnownIndex = match.nearestPointIndex;
+    let match: MatchResult | null = null;
+    if (route.length > 0) {
+      match = matchPosition(route, position, lastKnownIndex);
+      if (lastKnownIndex === undefined || match.nearestPointIndex >= lastKnownIndex) {
+        lastKnownIndex = match.nearestPointIndex;
+      }
     }
 
     state = { position, match, error: null };
@@ -57,11 +56,11 @@ export function initGpsTracker(
     onChange(state);
   }
 
-  function start(newRoute: RoutePoint[]): void {
+  function start(newRoute?: RoutePoint[]): void {
     if (watchId !== null) {
       geo.clearWatch(watchId);
     }
-    route = newRoute;
+    route = newRoute ?? [];
     lastKnownIndex = undefined;
     state = { position: null, match: null, error: null };
     watchId = geo.watchPosition(handlePosition, handleError, {
