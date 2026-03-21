@@ -61,6 +61,18 @@ ${filters}
 out center body;`;
 }
 
+export function buildProximityQuery(lat: number, lng: number, radiusMeters: number): string {
+  const filters = POI_FILTERS.map(
+    ([key, value]) => `  nwr["${key}"="${value}"](around:${radiusMeters},${lat},${lng});`,
+  ).join('\n');
+
+  return `[out:json][timeout:30];
+(
+${filters}
+);
+out center body;`;
+}
+
 function samplePoints(points: RoutePoint[]): RoutePoint[] {
   if (points.length <= MAX_SAMPLE_POINTS) return points;
 
