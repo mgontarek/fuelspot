@@ -3,6 +3,7 @@ import type { I18n } from './i18n';
 
 export interface ResultCardHandle {
   showStop(stop: RankedStop): void;
+  showStops(stops: RankedStop[]): void;
   showLoading(): void;
   showError(message: string): void;
   showEmpty(): void;
@@ -25,7 +26,7 @@ export function initResultCard(container: HTMLElement, i18n?: I18n): ResultCardH
     wrapper.hidden = false;
   }
 
-  function showStop(stop: RankedStop): void {
+  function renderStopHtml(stop: RankedStop): string {
     const name = stop.poi.name ?? tt('card.unnamed');
     const type = tt(`poi.${stop.poi.type}`);
 
@@ -55,7 +56,7 @@ export function initResultCard(container: HTMLElement, i18n?: I18n): ResultCardH
           ? tt('card.cardsNo')
           : tt('card.cardsUnknown');
 
-    setContent(`
+    return `
       <div class="result-stop ${statusClass}">
         <div class="result-header">
           <h3 class="result-name">${name}</h3>
@@ -67,7 +68,27 @@ export function initResultCard(container: HTMLElement, i18n?: I18n): ResultCardH
         ${countdownLine}
         <p class="result-cards">${tt('card.cardsLabel', { value: cardsValue })}</p>
       </div>
-    `);
+    `;
+  }
+
+  function showStop(stop: RankedStop): void {
+    setContent(renderStopHtml(stop));
+  }
+
+  function showStops(stops: RankedStop[]): void {
+    if (stops.length === 0) {
+      showEmpty();
+      return;
+    }
+    if (stops.length === 1) {
+      setContent(renderStopHtml(stops[0]));
+      return;
+    }
+    const sections = [
+      `<h4 class="result-section-label">${tt('card.primaryLabel')}</h4>${renderStopHtml(stops[0])}`,
+      `<h4 class="result-section-label">${tt('card.backupLabel')}</h4>${renderStopHtml(stops[1])}`,
+    ];
+    setContent(sections.join(''));
   }
 
   function showLoading(): void {
@@ -91,7 +112,7 @@ export function initResultCard(container: HTMLElement, i18n?: I18n): ResultCardH
     wrapper.hidden = true;
   }
 
-  return { showStop, showLoading, showError, showEmpty, showWaitingForGps, clear };
+  return { showStop, showStops, showLoading, showError, showEmpty, showWaitingForGps, clear };
 }
 
 // Fallback English strings when no i18n is provided (backward compat)
@@ -111,6 +132,8 @@ function fallback(key: string, params?: Record<string, string | number>): string
     'badge.open': 'Open',
     'badge.closed': 'Closed',
     'badge.unknown': 'Unknown',
+    'card.primaryLabel': 'Nearest stop',
+    'card.backupLabel': 'Backup stop',
     'gps.waiting': 'Waiting for GPS...',
     'poi.fuel': 'fuel',
     'poi.convenience': 'convenience',
