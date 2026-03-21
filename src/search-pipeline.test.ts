@@ -41,6 +41,7 @@ const dummyRankedStop = {
 function createStubDeps(overrides?: Partial<SearchDeps>): SearchDeps {
   return {
     fetchPOIs: vi.fn().mockResolvedValue([dummyPoi]),
+    fetchProximityPOIs: vi.fn().mockResolvedValue([dummyPoi]),
     rankStops: vi.fn().mockReturnValue([dummyRankedStop]),
     evaluateHours: vi.fn().mockReturnValue({ status: 'unknown', nextChange: null, displayString: 'Hours unknown' }),
     matchPosition: vi.fn().mockReturnValue(dummyMatch),
@@ -222,5 +223,216 @@ describe('search pipeline', () => {
 
     // createOpeningHoursParser called once during factory creation
     expect(deps.createOpeningHoursParser).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('proximity search', () => {
+  it('returns no-gps when position is null', async () => {
+    const deps = createStubDeps();
+    const pipeline = createSearchPipeline(deps);
+
+    const result = await pipeline.runProximity(null);
+
+    expect(result).toEqual({ status: 'no-gps' });
+    expect(deps.fetchProximityPOIs).not.toHaveBeenCalled();
+  });
+
+  it('returns busy when route search is in-flight', async () => {
+    let resolveFetch!: (value: unknown) => void;
+    const deps = createStubDeps({
+      fetchPOIs: vi.fn().mockImplementation(
+        () => new Promise((resolve) => { resolveFetch = resolve; }),
+      ),
+    });
+    const pipeline = createSearchPipeline(deps);
+
+    const firstRun = pipeline.run(dummyRoute, createGpsState());
+    const result = await pipeline.runProximity({ lat: 50, lng: 20 });
+
+    expect(result).toEqual({ status: 'busy' });
+
+    resolveFetch([]);
+    await firstRun;
+  });
+
+  it('returns nearest open + nearest unknown when both exist', async () => {
+    const poiOpen = { ...dummyPoi, id: 1, name: 'Open Shop' };
+    const poiUnknown1 = { ...dummyPoi, id: 2, name: 'Unknown Near' };
+    const poiUnknown2 = { ...dummyPoi, id: 3, name: 'Unknown Far' };
+
+    const deps = createStubDeps({
+      fetchProximityPOIs: vi.fn().mockResolvedValue([poiOpen, poiUnknown1, poiUnknown2]),
+      evaluateHours: vi.fn()
+        .mockReturnValueOnce({ status: 'open', nextChange: null, displayString: 'Open' })
+        .mockReturnValueOnce({ status: 'unknown', nextChange: null, displayString: 'Hours unknown' })
+        .mockReturnValueOnce({ status: 'unknown', nextChange: null, displayString: 'Hours unknown' }),
+      haversine: vi.fn()
+        .mockReturnValueOnce(100)   // poiOpen: 100m
+        .mockReturnValueOnce(200)   // poiUnknown1: 200m
+        .mockReturnValueOnce(300),  // poiUnknown2: 300m
+    });
+    const pipeline = createSearchPipeline(deps);
+
+    const result = await pipeline.runProximity({ lat: 50, lng: 20 });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.ranked).toHaveLength(2);
+      expect(result.ranked[0].poi.name).toBe('Open Shop');
+      expect(result.ranked[1].poi.name).toBe('Unknown Near');
+    }
+  });
+
+  it('returns 2 nearest unknowns when no open stops exist', async () => {
+    const poi1 = { ...dummyPoi, id: 1, name: 'Near' };
+    const poi2 = { ...dummyPoi, id: 2, name: 'Mid' };
+    const poi3 = { ...dummyPoi, id: 3, name: 'Far' };
+
+    const deps = createStubDeps({
+      fetchProximityPOIs: vi.fn().mockResolvedValue([poi1, poi2, poi3]),
+      evaluateHours: vi.fn().mockReturnValue({ status: 'unknown', nextChange: null, displayString: 'Hours unknown' }),
+      haversine: vi.fn()
+        .mockReturnValueOnce(100)
+        .mockReturnValueOnce(200)
+        .mockReturnValueOnce(300),
+    });
+    const pipeline = createSearchPipeline(deps);
+
+    const result = await pipeline.runProximity({ lat: 50, lng: 20 });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.ranked).toHaveLength(2);
+      expect(result.ranked[0].poi.name).toBe('Near');
+      expect(result.ranked[1].poi.name).toBe('Mid');
+    }
+  });
+
+  it('returns 1 stop when only 1 exists', async () => {
+    const poi = { ...dummyPoi, id: 1, name: 'Only One' };
+    const deps = createStubDeps({
+      fetchProximityPOIs: vi.fn().mockResolvedValue([poi]),
+      evaluateHours: vi.fn().mockReturnValue({ status: 'open', nextChange: null, displayString: 'Open' }),
+      haversine: vi.fn().mockReturnValue(150),
+    });
+    const pipeline = createSearchPipeline(deps);
+
+    const result = await pipeline.runProximity({ lat: 50, lng: 20 });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.ranked).toHaveLength(1);
+      expect(result.ranked[0].poi.name).toBe('Only One');
+    }
+  });
+
+  it('returns empty when no stops found', async () => {
+    const deps = createStubDeps({
+      fetchProximityPOIs: vi.fn().mockResolvedValue([]),
+    });
+    const pipeline = createSearchPipeline(deps);
+
+    const result = await pipeline.runProximity({ lat: 50, lng: 20 });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.ranked).toEqual([]);
+    }
+  });
+
+  it('excludes closed stops from results', async () => {
+    const poiClosed = { ...dummyPoi, id: 1, name: 'Closed Nearest' };
+    const poiOpen = { ...dummyPoi, id: 2, name: 'Open' };
+    const poiUnknown = { ...dummyPoi, id: 3, name: 'Unknown' };
+
+    const deps = createStubDeps({
+      fetchProximityPOIs: vi.fn().mockResolvedValue([poiClosed, poiOpen, poiUnknown]),
+      evaluateHours: vi.fn()
+        .mockReturnValueOnce({ status: 'closed', nextChange: null, displayString: 'Closed' })
+        .mockReturnValueOnce({ status: 'open', nextChange: null, displayString: 'Open' })
+        .mockReturnValueOnce({ status: 'unknown', nextChange: null, displayString: 'Hours unknown' }),
+      haversine: vi.fn()
+        .mockReturnValueOnce(50)    // closed: nearest
+        .mockReturnValueOnce(200)   // open
+        .mockReturnValueOnce(300),  // unknown
+    });
+    const pipeline = createSearchPipeline(deps);
+
+    const result = await pipeline.runProximity({ lat: 50, lng: 20 });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.ranked).toHaveLength(2);
+      expect(result.ranked.every((s) => s.poi.name !== 'Closed Nearest')).toBe(true);
+      expect(result.ranked[0].poi.name).toBe('Open');
+      expect(result.ranked[1].poi.name).toBe('Unknown');
+    }
+  });
+
+  it('sets distanceAlongRoute to null and computes straightLineDistance', async () => {
+    const poi = { ...dummyPoi, id: 1 };
+    const deps = createStubDeps({
+      fetchProximityPOIs: vi.fn().mockResolvedValue([poi]),
+      evaluateHours: vi.fn().mockReturnValue({ status: 'open', nextChange: null, displayString: 'Open' }),
+      haversine: vi.fn().mockReturnValue(1234),
+    });
+    const pipeline = createSearchPipeline(deps);
+
+    const result = await pipeline.runProximity({ lat: 50, lng: 20 });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.ranked[0].distanceAlongRoute).toBeNull();
+      expect(result.ranked[0].straightLineDistance).toBe(1234);
+    }
+  });
+
+  it('returns empty when all stops are closed', async () => {
+    const deps = createStubDeps({
+      fetchProximityPOIs: vi.fn().mockResolvedValue([
+        { ...dummyPoi, id: 1 },
+        { ...dummyPoi, id: 2 },
+      ]),
+      evaluateHours: vi.fn().mockReturnValue({ status: 'closed', nextChange: null, displayString: 'Closed' }),
+      haversine: vi.fn().mockReturnValue(100),
+    });
+    const pipeline = createSearchPipeline(deps);
+
+    const result = await pipeline.runProximity({ lat: 50, lng: 20 });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.ranked).toEqual([]);
+    }
+  });
+
+  it('returns error when proximity fetch fails', async () => {
+    const deps = createStubDeps({
+      fetchProximityPOIs: vi.fn().mockRejectedValue(new Error('Network failure')),
+    });
+    const pipeline = createSearchPipeline(deps);
+
+    const result = await pipeline.runProximity({ lat: 50, lng: 20 });
+
+    expect(result).toEqual({ status: 'error', message: 'Network failure' });
+    expect(pipeline.isRunning).toBe(false);
+  });
+
+  it('run() returns busy when proximity search is in-flight', async () => {
+    let resolveFetch!: (value: unknown) => void;
+    const deps = createStubDeps({
+      fetchProximityPOIs: vi.fn().mockImplementation(
+        () => new Promise((resolve) => { resolveFetch = resolve; }),
+      ),
+    });
+    const pipeline = createSearchPipeline(deps);
+
+    const firstRun = pipeline.runProximity({ lat: 50, lng: 20 });
+    const result = await pipeline.run(dummyRoute, createGpsState());
+
+    expect(result).toEqual({ status: 'busy' });
+
+    resolveFetch([]);
+    await firstRun;
   });
 });

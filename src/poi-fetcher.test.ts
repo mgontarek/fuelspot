@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import type { RoutePoint } from './gpx-parser';
 import {
   buildOverpassQuery,
+  buildProximityQuery,
   parseOverpassResponse,
   fetchPOIs,
   createOverpassClient,
@@ -56,6 +57,23 @@ describe('buildOverpassQuery', () => {
     // Should always include first and last points
     expect(query).toContain(`${points[0].lat}`);
     expect(query).toContain(`${points[499].lat}`);
+  });
+});
+
+describe('buildProximityQuery', () => {
+  it('generates valid Overpass QL with coords, radius, and all 6 POI types', () => {
+    const query = buildProximityQuery(50.123, 20.456, 5000);
+
+    expect(query).toContain('[out:json]');
+    expect(query).toContain('[timeout:30]');
+    expect(query).toContain('around:5000,50.123,20.456');
+    expect(query).toContain('"amenity"="fuel"');
+    expect(query).toContain('"shop"="convenience"');
+    expect(query).toContain('"shop"="supermarket"');
+    expect(query).toContain('"shop"="bakery"');
+    expect(query).toContain('"amenity"="restaurant"');
+    expect(query).toContain('"amenity"="cafe"');
+    expect(query).toContain('out center body');
   });
 });
 

@@ -3,7 +3,7 @@ import type { ParsedRoute } from './gpx-parser';
 import { initRouteMap } from './route-map';
 import { initGpsTracker } from './gps-tracker';
 import type { GeolocationProvider, GpsTrackerHandle, GpsState } from './gps-tracker';
-import { createOverpassClient, createCachedFetcher } from './poi-fetcher';
+import { createOverpassClient, createCachedFetcher, buildProximityQuery, parseOverpassResponse } from './poi-fetcher';
 import type { OverpassClient } from './poi-fetcher';
 import { initResultCard } from './result-card';
 import { rankStops } from './stop-ranker';
@@ -51,6 +51,11 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
   const cachedFetcher = createCachedFetcher(client);
   const pipeline = createSearchPipeline({
     fetchPOIs: (points) => cachedFetcher.fetch(points),
+    fetchProximityPOIs: async (lat, lng, radius) => {
+      const query = buildProximityQuery(lat, lng, radius);
+      const response = await client.query(query);
+      return parseOverpassResponse(response);
+    },
     rankStops,
     evaluateHours,
     matchPosition,
