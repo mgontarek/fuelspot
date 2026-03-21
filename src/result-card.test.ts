@@ -160,6 +160,81 @@ describe('result-card', () => {
   });
 });
 
+describe('result-card showStops (proximity mode)', () => {
+  let container: HTMLElement;
+  let card: ResultCardHandle;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    card = initResultCard(container);
+  });
+
+  it('showStops with empty array shows no stops message', () => {
+    card.showStops([]);
+    const wrapper = container.querySelector('.result-card') as HTMLElement;
+    expect(wrapper.hidden).toBe(false);
+    expect(wrapper.textContent).toContain('No stops found');
+  });
+
+  it('showStops with 1 stop renders it without section labels', () => {
+    card.showStops([makeStop()]);
+    const wrapper = container.querySelector('.result-card') as HTMLElement;
+    expect(wrapper.hidden).toBe(false);
+    expect(wrapper.textContent).toContain('Shell');
+    expect(wrapper.textContent).toContain('fuel');
+    expect(wrapper.textContent).toContain('2.5 km');
+    expect(wrapper.querySelectorAll('.result-stop').length).toBe(1);
+    expect(wrapper.querySelector('.result-section-label')).toBeNull();
+  });
+
+  it('showStops with 2 stops renders both with section labels', () => {
+    const primary = makeStop({
+      poi: { id: 1, name: 'Primary Stop', type: 'fuel', lat: 50, lng: 20, openingHours: 'Mo-Su 06:00-22:00', acceptsCards: true },
+    });
+    const backup = makeStop({
+      poi: { id: 2, name: 'Backup Stop', type: 'cafe', lat: 51, lng: 21, openingHours: null, acceptsCards: null },
+      hours: { status: 'unknown', nextChange: null, displayString: 'Hours unknown' },
+    });
+    card.showStops([primary, backup]);
+    const wrapper = container.querySelector('.result-card') as HTMLElement;
+    expect(wrapper.hidden).toBe(false);
+    expect(wrapper.textContent).toContain('Primary Stop');
+    expect(wrapper.textContent).toContain('Backup Stop');
+    expect(wrapper.querySelectorAll('.result-stop').length).toBe(2);
+    const labels = wrapper.querySelectorAll('.result-section-label');
+    expect(labels.length).toBe(2);
+    expect(labels[0].textContent).toBe('Nearest stop');
+    expect(labels[1].textContent).toBe('Backup stop');
+  });
+
+  it('showStops renders independent status badges per section', () => {
+    const primary = makeStop({
+      poi: { id: 1, name: 'Open Place', type: 'fuel', lat: 50, lng: 20, openingHours: 'Mo-Su 06:00-22:00', acceptsCards: true },
+      hours: { status: 'open', nextChange: null, displayString: 'Open 24/7' },
+    });
+    const backup = makeStop({
+      poi: { id: 2, name: 'Unknown Place', type: 'cafe', lat: 51, lng: 21, openingHours: null, acceptsCards: null },
+      hours: { status: 'unknown', nextChange: null, displayString: 'Hours unknown' },
+    });
+    card.showStops([primary, backup]);
+    const stops = container.querySelectorAll('.result-stop');
+    expect(stops[0].querySelector('.badge-open')).not.toBeNull();
+    expect(stops[1].querySelector('.badge-unknown')).not.toBeNull();
+  });
+
+  it('showStops replaces previous showStop content', () => {
+    card.showStop(makeStop({
+      poi: { id: 1, name: 'Old Stop', type: 'fuel', lat: 50, lng: 20, openingHours: null, acceptsCards: null },
+    }));
+    card.showStops([makeStop({
+      poi: { id: 2, name: 'New Stop', type: 'cafe', lat: 51, lng: 21, openingHours: null, acceptsCards: null },
+    })]);
+    const wrapper = container.querySelector('.result-card') as HTMLElement;
+    expect(wrapper.textContent).not.toContain('Old Stop');
+    expect(wrapper.textContent).toContain('New Stop');
+  });
+});
+
 describe('result-card with i18n', () => {
   let container: HTMLElement;
   let card: ResultCardHandle;
@@ -215,6 +290,17 @@ describe('result-card with i18n', () => {
     card = initResultCard(container, i18n);
     card.showStop(makeStop());
     expect(container.textContent).toContain('Karty: Tak');
+  });
+
+  it('showStops with 2 stops renders translated section labels', () => {
+    const i18n = createI18n('pl');
+    card = initResultCard(container, i18n);
+    card.showStops([makeStop(), makeStop({
+      poi: { id: 2, name: 'Backup', type: 'cafe', lat: 51, lng: 21, openingHours: null, acceptsCards: null },
+    })]);
+    const labels = container.querySelectorAll('.result-section-label');
+    expect(labels[0].textContent).toBe('Najbliższy przystanek');
+    expect(labels[1].textContent).toBe('Zapasowy przystanek');
   });
 
   // Slice 22: Switching locale and re-rendering produces Polish text

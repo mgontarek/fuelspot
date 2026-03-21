@@ -229,6 +229,23 @@ h1 {
   border-left: 4px solid #9ca3af;
 }
 
+.result-stop + .result-stop {
+  margin-top: 0.75rem;
+}
+
+.result-section-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  margin: 0 0 0.25rem;
+}
+
+.result-section-label + .result-stop + .result-section-label {
+  margin-top: 0.75rem;
+}
+
 .result-header {
   display: flex;
   align-items: center;
