@@ -83,7 +83,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
       }
     }
 
-    if (state.error === 'denied' && currentRoute) {
+    if (state.error === 'denied') {
       resultCard.showError(tt('gps.denied'));
       return;
     }
@@ -91,6 +91,11 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     if (state.position && currentRoute && !hasAutoSearched) {
       hasAutoSearched = true;
       searchAndDisplay();
+    }
+
+    if (state.position && !currentRoute && !hasAutoSearched) {
+      hasAutoSearched = true;
+      proximitySearchAndDisplay();
     }
   }
 
@@ -138,7 +143,46 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     }
   }
 
+  async function proximitySearchAndDisplay(): Promise<void> {
+    if (pipeline.isRunning) return;
+
+    const gpsState = gpsTracker?.getState();
+    if (!gpsState?.position) {
+      resultCard.showError(tt('gps.unavailable'));
+      return;
+    }
+
+    refreshBtn.disabled = true;
+    resultCard.showLoading();
+
+    const result = await pipeline.runProximity(gpsState.position, i18n);
+
+    refreshBtn.disabled = false;
+
+    switch (result.status) {
+      case 'ok':
+        mapHandle.showPOIs(result.pois);
+        if (result.ranked.length === 0) {
+          resultCard.showEmpty();
+          mapHandle.clearHighlight();
+        } else {
+          resultCard.showStops(result.ranked);
+          mapHandle.highlightStop(result.ranked[0].poi);
+          mapHandle.zoomToFit([
+            result.position,
+            ...result.ranked.map((s) => ({ lat: s.poi.lat, lng: s.poi.lng })),
+          ]);
+        }
+        break;
+      case 'error':
+        resultCard.showError(result.message);
+        break;
+    }
+  }
+
   function showRoute(route: ParsedRoute): void {
+    mapHandle.clearPOIs();
+    mapHandle.clearHighlight();
     currentRoute = route;
     hasAutoSearched = false;
     routeName.textContent = route.name ?? tt('route.unnamed');
@@ -174,6 +218,16 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     statsSection.hidden = true;
   }
 
+  function enterProximityMode(): void {
+    mapHandle.activate();
+    gpsTracker!.start();
+    refreshBtn.hidden = false;
+    hasAutoSearched = false;
+    if (geoProvider) {
+      resultCard.showWaitingForGps();
+    }
+  }
+
   function resetUI(): void {
     currentRoute = null;
     hasAutoSearched = false;
@@ -187,10 +241,13 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     mapHandle.clearPOIs();
     mapHandle.clearHighlight();
     resultCard.clear();
-    gpsTracker?.stop();
     mapHandle.clearRiderPosition();
     mapHandle.hideOffRouteWarning();
     cachedFetcher.clear();
+
+    if (gpsTracker) {
+      enterProximityMode();
+    }
   }
 
   // Subscribe to locale changes to re-render static text
@@ -213,6 +270,8 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
+  } else if (gpsTracker) {
+    enterProximityMode();
   }
 
   fileInput.addEventListener('change', () => {
@@ -240,7 +299,7 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
   });
 
   refreshBtn.addEventListener('click', () => {
-    if (!currentRoute || refreshBtn.disabled) return;
+    if (refreshBtn.disabled) return;
 
     const gpsState = gpsTracker?.getState();
     if (!gpsState?.position) {
@@ -248,7 +307,11 @@ export function initUpload(geo?: GeolocationProvider, overpassClient?: OverpassC
       return;
     }
 
-    searchAndDisplay();
+    if (currentRoute) {
+      searchAndDisplay();
+    } else {
+      proximitySearchAndDisplay();
+    }
   });
 }
 

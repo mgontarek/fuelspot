@@ -440,6 +440,31 @@ describe('route-map', () => {
       { padding: [50, 50] },
     );
   });
+
+  // Slice 18: activate() hides placeholder and shows map without route
+  it('activate hides placeholder and shows map', () => {
+    const placeholder = container.querySelector('.map-placeholder') as HTMLElement;
+    const mapInner = container.querySelector('.map-inner') as HTMLElement;
+
+    expect(placeholder.hidden).toBe(false);
+    expect(mapInner.hidden).toBe(true);
+
+    handle.activate();
+
+    expect(placeholder.hidden).toBe(true);
+    expect(mapInner.hidden).toBe(false);
+  });
+
+  // Slice 19: clear() after activate() restores placeholder
+  it('clear after activate restores placeholder', () => {
+    handle.activate();
+    handle.clear();
+
+    const placeholder = container.querySelector('.map-placeholder') as HTMLElement;
+    const mapInner = container.querySelector('.map-inner') as HTMLElement;
+    expect(placeholder.hidden).toBe(false);
+    expect(mapInner.hidden).toBe(true);
+  });
 });
 
 describe('route-map with i18n', () => {
